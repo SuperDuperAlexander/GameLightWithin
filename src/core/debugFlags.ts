@@ -1,4 +1,4 @@
-import type { SceneId } from '../content/chapter1';
+import type { QualityTier, SceneId } from '../content/chapter1';
 
 export interface DebugFlags {
   /** `?debug=1` shows the debug panel. */
@@ -9,6 +9,12 @@ export interface DebugFlags {
   readonly autobreathe: boolean;
   /** `?nopaint=1` turns the painting filter off. Useful when a driver has no float targets. */
   readonly noPaint: boolean;
+  /** `?quality=low|medium|high` pins the tier instead of measuring it. */
+  readonly quality: QualityTier | null;
+}
+
+function readQuality(raw: string | null): QualityTier | null {
+  return raw === 'low' || raw === 'medium' || raw === 'high' ? raw : null;
 }
 
 function readScene(raw: string | null): SceneId | null {
@@ -25,5 +31,6 @@ export function parseFlags(search: string): DebugFlags {
     startScene: readScene(p.get('scene')),
     autobreathe: p.get('autobreathe') === '1',
     noPaint: p.get('nopaint') === '1',
+    quality: readQuality(p.get('quality')),
   };
 }

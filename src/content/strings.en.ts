@@ -24,8 +24,10 @@ export interface GameStrings {
     readonly receive: string;
     readonly calm: string;
     readonly privacy: string;
-    readonly scaleLow: string;
-    readonly scaleHigh: string;
+    readonly receiveLow: string;
+    readonly receiveHigh: string;
+    readonly calmLow: string;
+    readonly calmHigh: string;
     readonly continue: string;
   };
   readonly settings: {
@@ -117,8 +119,10 @@ export const en: GameStrings = {
     receive: 'How easy is it for you to receive help or gifts?',
     calm: 'How calm do you feel right now?',
     privacy: 'Your answers stay on this device.',
-    scaleLow: 'Not easy',
-    scaleHigh: 'Very easy',
+    receiveLow: 'Not easy',
+    receiveHigh: 'Very easy',
+    calmLow: 'Not calm',
+    calmHigh: 'Very calm',
     continue: 'Continue',
   },
   settings: {

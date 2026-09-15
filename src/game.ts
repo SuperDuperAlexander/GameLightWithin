@@ -46,6 +46,12 @@ export class Game {
   /** The chapter writes these each frame so the world can draw them. */
   calm = 0;
   light = 0;
+  /**
+   * A point the player walks to on their own. Only the browser tests set this,
+   * through the debug test API. It drives the same movement and collision code
+   * the player's own input does.
+   */
+  autoWalk: { x: number; z: number } | null = null;
   readonly wind = { x: 0, z: 0, strength: 0, radius: 1 };
 
   constructor(
@@ -69,7 +75,8 @@ export class Game {
 
   async start(): Promise<void> {
     const settings = loadSettings();
-    const tier: QualityTier = settings.quality === 'auto' ? 'medium' : settings.quality;
+    const tier: QualityTier =
+      this.flags.quality ?? (settings.quality === 'auto' ? 'medium' : settings.quality);
     this.quality = settingsFor(tier);
 
     this.world = new World(this.quality);
@@ -128,38 +135,40 @@ export class Game {
     this.fps.update(dt);
 
     const picked = this.probe.sample(dt);
-    if (picked && loadSettings().quality === 'auto') this.setQuality(picked);
+    if (picked && this.flags.quality === null && loadSettings().quality === 'auto') this.setQuality(picked);
 
     this.input.sample();
-    if (!this.paused) this.step(dt);
+    if (!this.paused) this.moveAndAim(dt);
+    // The chapter runs every frame, even while a panel is open, so the world
+    // keeps drawing behind it. The chapter itself decides what may advance.
+    this.onFrame?.(dt, this.time);
+    this.world.update(dt, this.calm, this.light, this.wind.strength, this.wind.radius, this.wind.x, this.wind.z);
+    this.camera.update(dt, this.world.playerPosition);
     this.input.endFrame();
 
     this.painter.render(dt, this.time);
   };
 
-  /** One simulation step. */
-  private step(dt: number): void {
+  /** Camera and player movement. Skipped while the game is paused. */
+  private moveAndAim(dt: number): void {
     this.camera.rotate(this.input.yawDelta, this.input.pitchDelta);
     this.movePlayer(dt);
-    // The chapter runs its systems here, then the world draws the result.
-    this.onFrame?.(dt, this.time);
-    this.world.update(
-      dt,
-      this.calm,
-      this.light,
-      this.wind.strength,
-      this.wind.radius,
-      this.wind.x,
-      this.wind.z,
-    );
-    this.camera.update(dt, this.world.playerPosition);
   }
 
   private movePlayer(dt: number): void {
     const p = this.world.playerPosition;
     let mx = 0;
     let mz = 0;
-    if (!this.worldInputBlocked && (this.input.moveX !== 0 || this.input.moveY !== 0)) {
+    if (!this.worldInputBlocked && this.autoWalk) {
+      const dx = this.autoWalk.x - p.x;
+      const dz = this.autoWalk.z - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.8) this.autoWalk = null;
+      else {
+        mx = dx / d;
+        mz = dz / d;
+      }
+    } else if (!this.worldInputBlocked && (this.input.moveX !== 0 || this.input.moveY !== 0)) {
       this.camera.forward(this.forward);
       this.camera.right(this.right);
       mx = this.forward.x * this.input.moveY + this.right.x * this.input.moveX;
