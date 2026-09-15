@@ -183,9 +183,16 @@ button {
   background: rgba(232, 184, 75, 0.3);
 }
 
+.lw-btn--stack {
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 22px;
+}
+
 .lw-btn small {
   display: block;
   font-size: 12px;
+  line-height: 1.3;
   color: var(--ink-soft);
 }
 
@@ -397,9 +404,27 @@ input[type='range'] {
   transition: transform 90ms ease-out;
 }
 
-/* Touch-only controls stay hidden on a device with a mouse and keyboard. */
+/* The joystick and the big breath button are for touch only. The push and
+   plant buttons stay on every device, next to their key. */
 body:not(.lw-touch) .lw-joystick,
+body:not(.lw-touch) .lw-breath-btn {
+  display: none;
+}
+
 body:not(.lw-touch) .lw-touch-right {
+  bottom: calc(30px + var(--safe-b));
+}
+
+.lw-key {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgba(35, 38, 43, 0.14);
+  font-size: 13px;
+}
+
+body.lw-touch .lw-key {
   display: none;
 }
 
@@ -439,6 +464,9 @@ body:not(.lw-touch) .lw-touch-right {
 /* ---------- debug ---------- */
 
 .lw-debug {
+  /* The panel is a developer read-out. It must never swallow a tap meant for
+     the game or for an overlay panel underneath it. */
+  pointer-events: none;
   position: absolute;
   left: 12px;
   top: calc(12px + var(--safe-t));
@@ -454,6 +482,7 @@ body:not(.lw-touch) .lw-touch-right {
 }
 
 .lw-debug button {
+  pointer-events: auto;
   margin-top: 8px;
   min-height: 34px;
   width: 100%;
@@ -488,6 +517,11 @@ body:not(.lw-touch) .lw-touch-right {
 }
 
 @media (max-width: 460px) {
+  .lw-debug {
+    font-size: 10px;
+    max-width: 180px;
+    padding: 7px 8px;
+  }
   .lw-breath {
     width: 128px;
     height: 128px;

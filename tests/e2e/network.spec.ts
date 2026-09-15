@@ -36,3 +36,27 @@ test('serves the font from its own origin', async ({ page }) => {
   await page.waitForTimeout(1500);
   for (const url of fonts) expect(url).toContain('/fonts/');
 });
+
+/** Reports what the game actually downloads, for the completion report. */
+test('reports the download size', async ({ page }, info) => {
+  const bytes = new Map<string, number>();
+  page.on('response', async (r) => {
+    try {
+      const body = await r.body();
+      bytes.set(new URL(r.url()).pathname, body.length);
+    } catch {
+      // A response with no body. Nothing to count.
+    }
+  });
+  await page.goto('/?debug=1');
+  await page.waitForFunction(() => document.body.dataset.ready === '1');
+  await page.waitForTimeout(3000);
+  let total = 0;
+  for (const [path, n] of bytes) {
+    total += n;
+    // eslint-disable-next-line no-console
+    console.log(`SIZE ${info.project.name} ${path} ${n}`);
+  }
+  // eslint-disable-next-line no-console
+  console.log(`SIZETOTAL ${info.project.name} ${total}`);
+});

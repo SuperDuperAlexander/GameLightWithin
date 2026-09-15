@@ -261,14 +261,18 @@ export class Panels {
     );
     const row = el('div', { class: 'lw-row' });
 
-    const bridge = el('button', { class: 'lw-btn', type: 'button', 'data-ui': '1' });
+    const bridge = el('button', { class: 'lw-btn lw-btn--stack', type: 'button', 'data-ui': '1' });
     bridge.append(s.seed.bridge, el('small', {}, canAfford ? s.seed.cost : s.seed.notEnough));
     bridge.disabled = !canAfford;
     bridge.addEventListener('click', this.tap(onPlant));
     row.append(bridge);
 
     for (const label of [s.seed.tree, s.seed.house, s.seed.well]) {
-      const b = el('button', { class: 'lw-btn lw-btn--quiet', type: 'button', disabled: 'true' });
+      const b = el('button', {
+        class: 'lw-btn lw-btn--quiet lw-btn--stack',
+        type: 'button',
+        disabled: 'true',
+      });
       b.append(label, el('small', {}, s.seed.comingSoon));
       row.append(b);
     }
@@ -334,7 +338,11 @@ export class Panels {
 
   chapterEnd(onAgain: () => void, onStart: () => void): void {
     const s = t();
-    const soon = el('button', { class: 'lw-btn lw-btn--quiet', type: 'button', disabled: 'true' });
+    const soon = el('button', {
+      class: 'lw-btn lw-btn--quiet lw-btn--stack',
+      type: 'button',
+      disabled: 'true',
+    });
     soon.append(s.end.nextChapter, el('small', {}, s.end.comingSoon));
     const panel = el(
       'div',

@@ -192,9 +192,9 @@ export class FogVolume {
           float facing = abs(dot(normalize(vN), normalize(vV)));
           float soft = pow(1.0 - facing, 0.6);
           float drift = 0.85 + 0.15 * sin(uTime * 0.5 + vL.y * 1.6 + vL.x);
-          float a = (1.0 - soft) * 0.24 * uDensity * drift;
+          float a = (1.0 - soft) * 0.28 * uDensity * drift;
           // Lift the blockage blue toward a pale, melancholic haze.
-          vec3 col = mix(uColor, vec3(0.62, 0.65, 0.76), 0.45) * (0.8 + 0.3 * facing);
+          vec3 col = mix(uColor, vec3(0.52, 0.56, 0.72), 0.32) * (0.8 + 0.3 * facing);
           gl_FragColor = vec4(col, clamp(a, 0.0, 0.5));
         }
       `,

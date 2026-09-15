@@ -40,6 +40,7 @@ export class Hud {
       'button',
       { class: 'lw-push-btn', type: 'button', 'data-ui': '1' },
       t().hud.push,
+      el('span', { class: 'lw-key', 'aria-hidden': 'true' }, 'E'),
     );
     this.pushBtn.addEventListener('click', onPush);
     this.pushBtn.style.display = 'none';
@@ -48,6 +49,7 @@ export class Hud {
       'button',
       { class: 'lw-push-btn', type: 'button', 'data-ui': '1' },
       t().hud.plant,
+      el('span', { class: 'lw-key', 'aria-hidden': 'true' }, 'Enter'),
     );
     this.interactBtn.addEventListener('click', onInteract);
     this.interactBtn.style.display = 'none';
@@ -102,9 +104,8 @@ export class Hud {
     this.pushBtn.style.display = on ? '' : 'none';
   }
 
-  setInteractVisible(on: boolean, label = t().hud.plant): void {
+  setInteractVisible(on: boolean): void {
     this.interactBtn.style.display = on ? '' : 'none';
-    if (on) this.interactBtn.textContent = label;
   }
 
   /** A short soft line. Used for controls, never to explain the meaning. */

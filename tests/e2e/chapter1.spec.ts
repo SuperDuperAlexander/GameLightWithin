@@ -13,6 +13,18 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
     await page.screenshot({ path: `screenshots/${name}-${tag}.png` });
   };
 
+  const t0 = Date.now();
+  let mark = t0;
+  const phase = async (name: string): Promise<void> => {
+    const now = Date.now();
+    const s = await snap(page);
+    // eslint-disable-next-line no-console
+    console.log(
+      `PHASE ${name} +${((now - mark) / 1000).toFixed(1)}s total=${((now - t0) / 1000).toFixed(1)}s fps=${String(s.fps)}`,
+    );
+    mark = now;
+  };
+
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
@@ -30,6 +42,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await expect(page.getByText('Your answers stay on this device.')).toBeVisible();
   await shot('scene0-questions');
   await answerQuestions(page, 3);
+  await phase('questions');
 
   // ---- scene 1: wake up. Three calm breaths bring the glow. ----
   await waitForSnap(page, (s) => s.scene === 1 && s.phase === 'playing', 'scene 1');
@@ -37,6 +50,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('scene1-wake');
   const wake = await waitForSnap(page, (s) => s.scene >= 2, 'the glow after three calm breaths');
   expect(wake.calm).toBeGreaterThan(0);
+  await phase('scene1');
 
   // ---- scene 2: the dry spring gives 3 light ----
   await walkTo(page, LAYOUT.spring1.x, LAYOUT.spring1.z + 2.2);
@@ -45,6 +59,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   const spring1 = await waitForSnap(page, (s) => s.scene >= 3, 'the first spring to empty');
   expect(spring1.springs[0]?.left).toBe(0);
   await waitForSnap(page, (s) => s.light >= 3, 'three light carried');
+  await phase('scene2');
 
   // ---- scene 3: the hidden spring ----
   await walkTo(page, LAYOUT.spring2.x, LAYOUT.spring2.z + 2.2);
@@ -52,6 +67,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('scene3-hidden-spring');
   await waitForSnap(page, (s) => s.scene >= 4, 'the second spring to empty');
   await waitForSnap(page, (s) => s.light >= 6, 'six light carried');
+  await phase('scene3');
 
   // ---- scene 4: the fog ----
   await walkTo(page, LAYOUT.fog.x, LAYOUT.fog.z + 7);
@@ -71,6 +87,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('scene4-fog-center');
   await waitForSnap(page, (s) => s.fogStep === 4, 'the fog to dissolve', 200_000);
   await waitForSnap(page, (s) => s.light >= 8, 'eight light carried');
+  await phase('scene4');
 
   // ---- scene 5: the seed and the bridge ----
   await waitForSnap(page, (s) => s.scene >= 5, 'scene 5');
@@ -84,6 +101,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   // Tree, House and Well are shown but disabled in chapter 1.
   await expect(page.getByRole('button', { name: /Tree/ })).toBeDisabled();
   await page.getByRole('button', { name: /Bridge/ }).click();
+  await phase('walk-to-seed');
   const planted = await waitForSnap(page, (s) => s.seed === 'growing', 'the seed to be planted');
   expect(planted.light).toBe(3);
 
@@ -94,6 +112,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await waitForSnap(page, (s) => s.light >= 6, 'six light carried again');
   await shot('scene5-side-path');
   await waitForSnap(page, (s) => s.seed === 'complete', 'the bridge to grow', 200_000);
+  await phase('scene5');
   await page.waitForTimeout(3500);
 
   // ---- scene 6: thanks on the bridge ----
@@ -102,6 +121,7 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('scene6-bridge');
   await waitForSnap(page, (s) => s.thanks >= 1, 'the first thanks breath');
   await waitForSnap(page, (s) => s.globalColor >= 0.6, 'colour to flow across the valley', 200_000);
+  await phase('scene6');
   await page.waitForTimeout(1200);
   await shot('scene6-full-colour');
 

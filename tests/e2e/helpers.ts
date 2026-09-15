@@ -15,6 +15,7 @@ export interface Snapshot {
   zones: number;
   springs: { id: string; left: number; revealed: boolean }[];
   birdShown: boolean;
+  fps: number;
   butterflyShown: boolean;
 }
 

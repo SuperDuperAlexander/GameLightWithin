@@ -173,6 +173,8 @@ export class Chapter1 {
       this.game.setPaused(open);
       this.game.worldInputBlocked = open;
       this.hud.setVisible(!open && this.phase === 'playing');
+      // The debug read-out would sit on top of a panel on a narrow screen.
+      if (this.debug) this.debug.root.style.display = open ? 'none' : '';
     };
     this.panels.onSelect = (): void => {
       void this.audio.start();
@@ -466,6 +468,9 @@ export class Chapter1 {
 
     if (this.phase === 'playing' && !this.panels.isOpen) {
       this.game.worldInputBlocked = this.movementLocked;
+      // Desktop keys: E pushes, Enter plants. The on-screen buttons do the same.
+      if (this.game.input.pushPressed) this.onPush();
+      if (this.game.input.interactPressed) this.onInteract();
       this.breath.update(dt, held, this.game.speed);
       this.calm.update(dt, walking);
       this.checks.update(dt);

@@ -16,6 +16,7 @@ Work through the milestones in order. Do not stop between milestones unless you 
 - No companion or helper character.
 
 ### Content rules (must follow)
+
 - No medical or healing claims anywhere. Breathing is never described as healing.
 - Manifestation is always framed as personal reflection, never as a promise.
 - Dr. Rulin Xiu is named in third person only, and only on the "Understand" card.
@@ -82,11 +83,13 @@ All art is made in code. There are no model or texture files from outside, excep
 ## 5. Core systems
 
 ### 5.1 Controls
+
 - Desktop: WASD or arrow keys to walk. Mouse drag to rotate the camera. Hold Space to breathe in, release to breathe out. E for "push". Esc for pause.
 - Mobile: virtual joystick on the left. Large breath button on the right. Small push button above it. Drag on the empty screen to rotate the camera. Pause button in the top corner.
 - Third-person camera that follows gently. No sudden moves.
 
 ### 5.2 Breath system (the base of everything)
+
 - A breath circle UI in the lower center of the screen.
 - The circle shows a target rhythm: it grows during the in-breath and shrinks during the out-breath.
 - The player holds the breath button to breathe in and releases it to breathe out.
@@ -103,12 +106,14 @@ All art is made in code. There are no model or texture files from outside, excep
 - Emit events: `breathStarted`, `breathCompleted { calm: boolean }`, `calmChanged`.
 
 ### 5.3 Light (the only resource)
+
 - The player carries light. Show it as small glowing motes that orbit the player. No numbers.
 - Maximum 12 light.
 - Sources in chapter 1: spring 1 gives 3, spring 2 gives 3, the fog gives 2, spring 3 gives 3.
 - A seed costs 5 light.
 
 ### 5.4 Receive (springs)
+
 - A spring gives 1 light per calm breath while the player stands within 3 m, up to its limit.
 - Light visibly rises from the spring and flows into the player.
 - When a spring is empty, it keeps a gentle glow and adds a restored color zone around it.
@@ -116,6 +121,7 @@ All art is made in code. There are no model or texture files from outside, excep
 - If the player walks, the flow stops. Nothing bad happens.
 
 ### 5.5 Transform (blockages)
+
 - Chapter 1 has one blockage: a soft fog on a narrow path.
 - Three steps:
   1. **See it:** when the player comes within 8 m, a message appears inside the fog in soft handwritten-style text: "I do not deserve this." The player must stay within 8 m until the text is fully shown (about 4 s). It cannot be skipped.
@@ -125,6 +131,7 @@ All art is made in code. There are no model or texture files from outside, excep
 - **Push (E / push button):** the push button is visible near the fog. Using it plays a small push animation. The fog gets visibly denser, and step 3 needs 1 extra calm breath (maximum +2). Push never works.
 
 ### 5.6 Manifest (seeds)
+
 - The player can plant a seed only at marked seed spots. Chapter 1 has one spot at a gap in the path.
 - At the spot, an interaction opens a small choice panel. In chapter 1 the only enabled choice is "Bridge". Show "Tree", "House" and "Well" as disabled for later chapters.
 - Planting costs 5 light. The seed is a small glowing sprout.
@@ -136,20 +143,24 @@ All art is made in code. There are no model or texture files from outside, excep
 - Heart seed: quiet warm glow, stays. Mind seed (for later): bright flicker, grows 2 times faster, then fades after 60 s and returns half of its light.
 
 ### 5.7 Thanks
+
 - When the player stands on a grown bridge and completes 3 calm breaths, the bridge turns golden, and color flows out from the bridge across the whole valley (global color value animates to 1 over 6 s).
 
 ### 5.8 Hints (soft, never text)
+
 - Scene 3: if the player has not stopped and breathed for 120 s, a small bird lands near the hidden spring and sits still.
 - Scene 5: if the player stays within 15 m of the seed for 30 s, a butterfly appears and flies slowly along the side path toward spring 3.
 
 ### 5.9 Hidden learning checks (local only)
+
 Record these in `localStorage` and show them in the debug panel:
+
 - `stoppedWithoutHint` (scene 3): did the player find the hidden spring before the bird hint?
 - `pushCount` (scene 4): how many times push was used.
 - `leftFogCount` (scene 4): how many times the player ran away.
 - `walkedAwayFromSeed` (scene 5): did the player leave the 15 m zone without the butterfly hint?
 - `timePerScene` in seconds.
-Add a debug button "Export results" that downloads a JSON file. Never send data anywhere.
+  Add a debug button "Export results" that downloads a JSON file. Never send data anywhere.
 
 ---
 
@@ -160,42 +171,51 @@ Add a debug button "Export results" that downloads a JSON file. Never send data 
 **Length:** 10 to 15 minutes.
 
 ### Start screen
+
 - Title, "Begin" button, settings (rhythm preset, quality, sound volume, reduced motion).
 
 ### Start questions (before scene 1)
+
 - Two questions, each with a 1 to 5 scale:
   - "How easy is it for you to receive help or gifts?"
   - "How calm do you feel right now?"
 - Short note under them: "Your answers stay on this device."
 
 ### Scene 1: Wake up
+
 - The player wakes up in the grey valley. No text.
 - Only the breath circle pulses.
 - After 3 calm breaths, the glow appears and the player can walk.
 
 ### Scene 2: The dry spring
+
 - A path leads to a dry spring. A stone next to it shows a carved symbol meaning "stop here" (a simple drawn symbol, no text).
 - Receive mechanic with help. The spring gives 3 light.
 
 ### Scene 3: The hidden spring
+
 - The valley opens into a wide field. No sign.
 - Hidden spring 2 appears only after 2 calm breaths within 6 m.
 - Bird hint after 120 s.
 
 ### Scene 4: The first fog
+
 - The fog blocks a narrow path out of the field.
 - Full transform mechanic (section 5.5). Push button visible.
 
 ### Scene 5: The first seed
+
 - A gap in the ground stops the path. Seed spot at the edge.
 - Player plants a bridge.
 - A side path leads to hidden spring 3 (appears after 2 calm breaths, like scene 3). The walk there and back gives enough away time.
 - Butterfly hint if the player stays near the seed.
 
 ### Scene 6: Thanks
+
 - Thanks mechanic on the bridge. The whole valley turns to full color.
 
 ### After the play: learning cycle (overlay panels)
+
 1. **Reflect:** "What happened when you stopped?" Three tap answers: "I felt calm." / "I felt impatient." / "I felt nothing yet." Every answer gets the same reply: "Thank you for noticing."
 2. **Understand:** one card: "Dr. Rulin Xiu teaches that everything is already given to us. When we do not receive it, it is often we who hold it back."
 3. **Apply:** "Your practice for today: three times today, stop. Breathe three times. Notice what is already given to you."
@@ -203,6 +223,7 @@ Add a debug button "Export results" that downloads a JSON file. Never send data 
 5. **Chapter end screen:** "Chapter 1 complete." Buttons: "Play again", "Back to start". Show chapter 2 as "Coming soon".
 
 ### Always available
+
 - Pause at any time. Pause screen text: "Take all the time you need."
 - The player can quit at any point. Progress is saved per scene.
 
@@ -264,6 +285,7 @@ tests/
 ## 11. Tests
 
 ### Unit tests (Vitest), at least:
+
 - Breath: a breath within tolerance is calm; outside is not; walking resets the breath; each preset uses its own values.
 - Calm value: rises with calm breaths, falls slowly otherwise, stays within 0 to 1.
 - Light: never above 12; seed cannot be planted with less than 5.
@@ -272,6 +294,7 @@ tests/
 - Save: progress restores the correct scene.
 
 ### Browser tests (Playwright):
+
 - Full run of chapter 1 with `?autobreathe=1` from start screen to chapter end screen.
 - Screenshots at each scene, on desktop (1280 x 720) and mobile (390 x 844).
 - Save screenshots to `screenshots/` with clear names, for example `scene4-fog-desktop.png`.
