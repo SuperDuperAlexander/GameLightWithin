@@ -117,7 +117,9 @@ export class BreathSystem {
 
   /** Ends the out-breath at the current time. Used when the player presses again. */
   private complete(exhale: number): void {
-    const calm = this.inTolerance(this.inhaleTime, this.preset.inhale) && this.inTolerance(exhale, this.preset.exhale);
+    const calm =
+      this.inTolerance(this.inhaleTime, this.preset.inhale) &&
+      this.inTolerance(exhale, this.preset.exhale);
     this.bus.emit('breathCompleted', { calm, inhale: this.inhaleTime, exhale });
   }
 

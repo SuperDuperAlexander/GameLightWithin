@@ -61,7 +61,8 @@ describe('CalmSystem', () => {
 
   it('crosses the heart seed threshold after enough calm breaths', () => {
     const needed = Math.ceil(CALM.heartThreshold / CALM.gainPerCalmBreath);
-    for (let i = 0; i < needed; i++) bus.emit('breathCompleted', { calm: true, inhale: 4, exhale: 6 });
+    for (let i = 0; i < needed; i++)
+      bus.emit('breathCompleted', { calm: true, inhale: 4, exhale: 6 });
     expect(calm.get()).toBeGreaterThanOrEqual(CALM.heartThreshold);
   });
 });

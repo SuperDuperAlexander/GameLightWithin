@@ -74,7 +74,10 @@ export class ManifestSystem {
 
     // Coming back before growth is complete adds time, up to a limit.
     if (near && !this.wasNear) {
-      const add = Math.min(MANIFEST.returnPenaltySeconds, MANIFEST.returnPenaltyMax - this.penaltyAdded);
+      const add = Math.min(
+        MANIFEST.returnPenaltySeconds,
+        MANIFEST.returnPenaltyMax - this.penaltyAdded,
+      );
       if (add > 0) {
         this.penaltyAdded += add;
         this.remaining += add;

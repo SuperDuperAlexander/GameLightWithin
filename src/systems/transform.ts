@@ -74,7 +74,11 @@ export class TransformSystem {
   push(): void {
     if (!this.pushAvailable) return;
     this.pushCount++;
-    this.pushExtra = clamp(this.pushExtra + TRANSFORM.pushExtraBreaths, 0, TRANSFORM.pushExtraBreathsMax);
+    this.pushExtra = clamp(
+      this.pushExtra + TRANSFORM.pushExtraBreaths,
+      0,
+      TRANSFORM.pushExtraBreathsMax,
+    );
     this.bus.emit('fogPushed', { count: this.pushCount, extraBreaths: this.pushExtra });
     this.bus.emit('cue', { id: 'push' });
   }

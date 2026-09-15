@@ -158,13 +158,13 @@ export const PLAYER = {
 } as const;
 
 export const CAMERA = {
-  distance: 7.5,
-  height: 3.4,
+  distance: 8,
+  height: 2.9,
   /** Higher is snappier. The camera must never move suddenly. */
   followLambda: 2.4,
   minPitch: -0.15,
   maxPitch: 0.95,
-  startPitch: 0.28,
+  startPitch: 0.12,
   fov: 55,
   near: 0.1,
   far: 400,
@@ -234,9 +234,9 @@ export const QUALITY = {
 } as const;
 
 export const TIERS = {
-  low: { paintScale: 0.5, grassCards: 1200, particles: 40, skyStrokes: 5, treeBlobs: 4 },
-  medium: { paintScale: 0.75, grassCards: 3200, particles: 90, skyStrokes: 8, treeBlobs: 6 },
-  high: { paintScale: 1.0, grassCards: 6000, particles: 160, skyStrokes: 12, treeBlobs: 8 },
+  low: { paintScale: 0.5, grassCards: 7000, particles: 40, skyStrokes: 5, treeBlobs: 4 },
+  medium: { paintScale: 0.75, grassCards: 18000, particles: 90, skyStrokes: 8, treeBlobs: 6 },
+  high: { paintScale: 1.0, grassCards: 36000, particles: 160, skyStrokes: 12, treeBlobs: 8 },
 } as const;
 
 export type QualityTier = keyof typeof TIERS;

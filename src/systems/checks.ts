@@ -55,6 +55,10 @@ export class ChecksSystem {
   /** Builds the JSON the debug "Export results" button downloads. */
   toJson(): string {
     this.flushScene();
-    return JSON.stringify({ chapter: 1, recordedAt: new Date().toISOString(), checks: this.data }, null, 2);
+    return JSON.stringify(
+      { chapter: 1, recordedAt: new Date().toISOString(), checks: this.data },
+      null,
+      2,
+    );
   }
 }

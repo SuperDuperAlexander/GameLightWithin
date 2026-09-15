@@ -55,7 +55,8 @@ describe('LightSystem', () => {
   });
 
   it('gives enough light in chapter 1 to plant the bridge', () => {
-    const total = LAYOUT.spring1.light + LAYOUT.spring2.light + TRANSFORM.lightReward + LAYOUT.spring3.light;
+    const total =
+      LAYOUT.spring1.light + LAYOUT.spring2.light + TRANSFORM.lightReward + LAYOUT.spring3.light;
     expect(total).toBe(11);
     expect(total).toBeGreaterThanOrEqual(LIGHT.seedCost);
     expect(total).toBeLessThanOrEqual(LIGHT.max);

@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadSave, saveSave, clearSave, loadSettings, saveSettings, loadChecks, DEFAULT_SAVE } from '../../src/core/save';
+import {
+  loadSave,
+  saveSave,
+  clearSave,
+  loadSettings,
+  saveSettings,
+  loadChecks,
+  DEFAULT_SAVE,
+} from '../../src/core/save';
 import { ChecksSystem } from '../../src/systems/checks';
 
 describe('save', () => {
@@ -27,12 +35,18 @@ describe('save', () => {
   });
 
   it('falls back to scene 1 when the stored scene is out of range', () => {
-    localStorage.setItem('lightwithin.save.v1', JSON.stringify({ version: 1, scene: 99, light: 3 }));
+    localStorage.setItem(
+      'lightwithin.save.v1',
+      JSON.stringify({ version: 1, scene: 99, light: 3 }),
+    );
     expect(loadSave().scene).toBe(1);
   });
 
   it('clamps stored light to the maximum', () => {
-    localStorage.setItem('lightwithin.save.v1', JSON.stringify({ version: 1, scene: 2, light: 500 }));
+    localStorage.setItem(
+      'lightwithin.save.v1',
+      JSON.stringify({ version: 1, scene: 2, light: 500 }),
+    );
     expect(loadSave().light).toBe(12);
   });
 
@@ -73,7 +87,10 @@ describe('save', () => {
   it('exports the checks as JSON without sending anything', () => {
     const checks = new ChecksSystem();
     checks.set('walkedAwayFromSeed', true);
-    const parsed = JSON.parse(checks.toJson()) as { chapter: number; checks: { walkedAwayFromSeed: boolean } };
+    const parsed = JSON.parse(checks.toJson()) as {
+      chapter: number;
+      checks: { walkedAwayFromSeed: boolean };
+    };
     expect(parsed.chapter).toBe(1);
     expect(parsed.checks.walkedAwayFromSeed).toBe(true);
   });
