@@ -95,3 +95,45 @@ describe('save', () => {
     expect(parsed.checks.walkedAwayFromSeed).toBe(true);
   });
 });
+
+describe('learning checks batching', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('keeps a change in memory instead of writing on every set', () => {
+    const checks = new ChecksSystem();
+    checks.set('pushCount', 2);
+    expect(checks.hasUnsaved).toBe(true);
+    expect(localStorage.getItem('lightwithin.checks.v1')).toBeNull();
+  });
+
+  it('writes once the batching interval has passed', () => {
+    const checks = new ChecksSystem();
+    checks.set('pushCount', 2);
+    for (let t = 0; t < 6; t += 0.5) checks.update(0.5);
+    expect(checks.hasUnsaved).toBe(false);
+    expect(loadChecks().pushCount).toBe(2);
+  });
+
+  it('ignores a set that changes nothing', () => {
+    const checks = new ChecksSystem();
+    checks.set('pushCount', 0);
+    expect(checks.hasUnsaved).toBe(false);
+  });
+
+  it('writes straight away when a scene ends', () => {
+    const checks = new ChecksSystem();
+    checks.set('leftFogCount', 3);
+    checks.enterScene(2);
+    expect(checks.hasUnsaved).toBe(false);
+    expect(loadChecks().leftFogCount).toBe(3);
+  });
+
+  it('does not lose a change when persist is called by hand', () => {
+    const checks = new ChecksSystem();
+    checks.set('walkedAwayFromSeed', true);
+    checks.persist();
+    expect(loadChecks().walkedAwayFromSeed).toBe(true);
+  });
+});

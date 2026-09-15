@@ -46,6 +46,12 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - Three quality tiers: low, medium, high. The tier is picked from a short
   frame-time test at start and can be changed in settings.
 - Low tier: painting filter at half resolution, fewer particles, fewer grass cards.
+- A watchdog watches the real frame rate during play and steps the tier down
+  when a device cannot keep up. It only ever steps **down**, so it cannot
+  oscillate. It is off as soon as the player picks a tier by hand.
+- Grass is built once at the highest count. A tier only changes how many cards
+  are drawn and how close they fade, so a quality change takes effect at once.
+  `skyStrokes` and `treeBlobs` are baked into the geometry at world build.
 
 ## Art rules
 
@@ -58,8 +64,9 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - Painting filter: Kuwahara-style, plus procedural paper grain and a soft vignette.
 - Grey-to-colour: every world material shares one shader chunk. A uniform array
   holds restored zones (centre, radius, strength). Inside a zone the material
-  shows full colour; outside it is desaturated and slightly blue-grey. Zones grow
-  over 2 to 4 seconds. Chapter end sets the global colour value to 1.
+  shows full colour; outside it is desaturated, slightly blue-grey and held
+  below the restored side in brightness. Zones grow over 2 to 4 seconds.
+  Chapter end sets the global colour value to 1.
 - Palette lives in `src/content/palette.ts`. Do not invent colours elsewhere.
 - UI: quiet and minimal, one self-hosted humanist sans, frosted semi-transparent
   panels with a warm tint, no harsh borders, touch targets of at least 48 px.
@@ -76,6 +83,9 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - Rhythm presets: normal, slow, easy.
 - Reduced motion: no camera shake, no trembling circle, slower colour transitions.
 - Every important cue is visual **and** audio.
+- Colour is never the only cue. A restored area is also **brighter** than a grey
+  one, so the grey-to-colour change reads without colour perception. A browser
+  test measures this in greyscale.
 - All UI works with the keyboard. Visible focus states.
 - Text contrast meets WCAG AA (Web Content Accessibility Guidelines, level AA).
 

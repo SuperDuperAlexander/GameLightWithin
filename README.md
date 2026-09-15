@@ -22,13 +22,13 @@ Deploy `dist/` to any static host. There is no server and no network call.
 
 ## Debug
 
-| Parameter | What it does |
-| --- | --- |
-| `?debug=1` | Debug panel with calm, light, scene, fps, tier, learning checks and an export button |
-| `?scene=N` | Start at scene 1 to 6 with the right amount of light |
-| `?autobreathe=1` | Breathe automatically with calm breaths, for the browser tests |
-| `?nopaint=1` | Turn the painting filter off |
-| `?quality=low\|medium\|high` | Pin a quality tier instead of measuring one |
+| Parameter                    | What it does                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `?debug=1`                   | Debug panel with calm, light, scene, fps, tier, learning checks and an export button |
+| `?scene=N`                   | Start at scene 1 to 6 with the right amount of light                                 |
+| `?autobreathe=1`             | Breathe automatically with calm breaths, for the browser tests                       |
+| `?nopaint=1`                 | Turn the painting filter off                                                         |
+| `?quality=low\|medium\|high` | Pin a quality tier instead of measuring one, and turn the watchdog off               |
 
 ## Licences
 

@@ -11,7 +11,6 @@ import {
   TRANSFORM,
 } from './content/chapter1';
 import type { SceneId } from './content/chapter1';
-import { PALETTE } from './content/palette';
 import { t } from './content/strings.en';
 import { AudioEngine } from './audio/audio';
 import type { Game } from './game';
@@ -183,6 +182,14 @@ export class Chapter1 {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.phase === 'playing' && !this.panels.isOpen) this.openPause();
     });
+
+    // Leaving the page must not lose progress, and coming back must not leave
+    // the game silent. Browsers suspend audio while a page is hidden.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.saveNow();
+      else this.audio.resume();
+    });
+    window.addEventListener('pagehide', () => this.saveNow());
   }
 
   private wireEvents(): void {
@@ -214,6 +221,13 @@ export class Chapter1 {
         );
       }
     });
+  }
+
+  /** Writes everything that is only in memory. Safe to call at any time. */
+  private saveNow(): void {
+    this.checks.flushScene();
+    this.save.light = this.light.get();
+    saveSave(this.save);
   }
 
   // ---------- flow ----------
@@ -379,6 +393,7 @@ export class Chapter1 {
     this.audio.setMuted(next.muted);
     this.game.setReducedMotion(next.reducedMotion);
     this.hud.breathCircle.reducedMotion = next.reducedMotion;
+    this.game.setAutoQuality(next.quality === 'auto');
     if (next.quality !== 'auto') this.game.setQuality(next.quality);
   }
 
@@ -491,7 +506,10 @@ export class Chapter1 {
       light: this.light.get(),
       scene: this.scene,
       fps: this.game.fps.value,
-      tier: this.game.quality.tier,
+      tier:
+        this.game.qualityDrops > 0
+          ? `${this.game.quality.tier} (-${String(this.game.qualityDrops)})`
+          : this.game.quality.tier,
       fogStep: this.transform.step,
       seed: this.manifest.state,
       checks: this.checks.data,
@@ -629,14 +647,7 @@ export class Chapter1 {
     );
 
     // The bridge turns golden when the player gives thanks on it.
-    if (this.thanks.golden > 0) {
-      this.game.world.bridge.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        const mat = mesh.material as THREE.MeshLambertMaterial | undefined;
-        if (mat?.color)
-          mat.color.lerp(new THREE.Color(PALETTE.receiveGold), this.thanks.golden * 0.04);
-      });
-    }
+    this.game.world.setBridgeGold(this.thanks.golden);
 
     this.hud.breathCircle.update(
       this.breath.targetRing,

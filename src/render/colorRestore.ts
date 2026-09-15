@@ -29,6 +29,8 @@ export const colorUniforms = {
   uZoneCount: { value: 0 },
   uGlobalColor: { value: 0 },
   uGreyTint: { value: new THREE.Color(PALETTE.startGrey) },
+  /** How much darker the grey side is than the restored one. */
+  uGreyDim: { value: 0.8 },
 };
 
 const VERT_HEAD = /* glsl */ `
@@ -45,6 +47,7 @@ uniform vec4 uZones[${COLOR.maxZones}];
 uniform int uZoneCount;
 uniform float uGlobalColor;
 uniform vec3 uGreyTint;
+uniform float uGreyDim;
 
 /** How much colour this world point has, 0 grey to 1 full. */
 float lwColorAmount(vec3 worldPos) {
@@ -67,7 +70,14 @@ const FRAG_BODY = /* glsl */ `
   float lwAmount = lwColorAmount(vLwWorld);
   float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
   // The grey side is desaturated and pulled slightly toward blue-grey.
-  vec3 greyed = mix(vec3(lum), uGreyTint * (0.6 + lum * 0.8), 0.52);
+  vec3 greyed = mix(vec3(lum), uGreyTint * (0.6 + lum * 0.8), 0.4);
+  // Colour alone is not a safe cue, so a restored area must also read as
+  // brighter to someone who cannot see the colour change. The blue-grey tint
+  // lifts dark colours, which would put the grey side *above* the restored one,
+  // so the grey side is held to a fixed fraction of the original brightness.
+  // It is only ever pulled down, never up, so pale areas keep their soft look.
+  float greyLum = dot(greyed, vec3(0.299, 0.587, 0.114));
+  greyed *= min(1.0, (lum * uGreyDim) / max(greyLum, 1e-4));
   diffuseColor.rgb = mix(greyed, diffuseColor.rgb, lwAmount);
 }
 `;
@@ -82,6 +92,7 @@ export function applyColorRestore(material: THREE.Material): THREE.Material {
     shader.uniforms.uZoneCount = colorUniforms.uZoneCount;
     shader.uniforms.uGlobalColor = colorUniforms.uGlobalColor;
     shader.uniforms.uGreyTint = colorUniforms.uGreyTint;
+    shader.uniforms.uGreyDim = colorUniforms.uGreyDim;
 
     shader.vertexShader =
       VERT_HEAD +

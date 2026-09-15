@@ -171,7 +171,7 @@ low-tier pictures described in section 5.
 
 ### Unit tests, Vitest
 
-**62 passed, 0 failed**, in 6 files.
+**81 passed, 0 failed**, in 7 files.
 
 | File                | Tests | What it covers                                                                                                                                                                                 |
 | ------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +184,7 @@ low-tier pictures described in section 5.
 
 ### Browser tests, Playwright
 
-**42 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
+**46 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
 390 x 844.
 
 | Spec                    | Per project | What it covers                                                                                                                                                                                                                                       |
@@ -304,48 +304,82 @@ Device pixel ratio is capped at 1.5 on touch devices and 2 elsewhere.
    player crossing. Leaving the triangles out means the ground raycast finds
    nothing, so no invisible wall is needed anywhere.
 
+9. **A frame-rate watchdog on top of the start probe.** The brief asks for the
+   tier to be picked from a short frame-time test at start. That test runs in
+   the first second, before the player has walked anywhere or reached the fog,
+   so it can read a device as faster than it turns out to be. The watchdog keeps
+   checking during play and only ever steps down. The brief's behaviour is
+   unchanged; this only catches the case where the start reading was wrong.
+
+10. **A restored area is brighter, not only more colourful.** The brief
+    describes the grey side as desaturated and slightly blue-grey. That tint
+    lifts dark colours, which meant a grey meadow could be _brighter_ than the
+    restored one, so someone who cannot see the colour change had no cue at
+    all. The grey side is now also held below the restored side in brightness.
+    It reads as light returning, which suits the chapter, and it is tested.
+
 ---
 
 ## 6. Known problems, worst first
 
-1. **The frame rate targets are unverified.** 60 fps on a mid-range laptop and
-   30 fps on a mid-range Android phone could not be measured, because this
-   machine renders on the CPU. Section 4 gives the software numbers. This needs
-   one run on real hardware before the budget can be called met.
+1. **The frame rate targets are still unverified.** 60 fps on a mid-range laptop
+   and 30 fps on a mid-range Android phone cannot be measured here, because this
+   machine renders on the CPU. Section 4 gives the software numbers. This still
+   needs one run on real hardware before the budget can be called met. It is the
+   only item on this list that nothing in the code can settle.
 
-2. **The mobile frame rate is the real risk.** A phone has a real GPU, but the
-   grass cards are alpha-tested and overlap heavily, which is the pattern
-   phones handle worst. If the low tier misses 30 fps on a real phone, the
-   first things to cut are `TIERS.low.grassCards` and the grass fade distance
-   in `src/world/grass.ts`.
+2. **Mobile frame rate: now guarded, still not proven.** Three things changed
+   since the first report:
+   - A **watchdog** watches the real frame rate during play and steps the tier
+     down when a device cannot keep up (below 24 fps on touch, 45 fps
+     elsewhere, measured over five seconds with a six second cooldown). It only
+     ever steps **down**, so it cannot oscillate, and it switches off the moment
+     the player picks a tier by hand.
+   - Changing the tier used to do nothing to the grass, because the cards were
+     counted when the world was built. The grass is now built once at the
+     highest count and the tier decides how many are drawn and how close they
+     fade, so a quality change takes effect immediately.
+   - The low tier now fades grass out at 24 m instead of 48 m.
 
-3. **There is no colour-blind check.** Contrast was checked, but the grey to
-   colour change is the main feedback in the game and it is a colour change. It
-   is always paired with a sound and with the glow getting brighter, so it is
-   not the only cue, but I did not test it with a colour-blindness simulation.
+   A slow phone therefore settles itself instead of staying slow. The targets
+   still need checking on real hardware.
+
+3. **Colour is no longer the only cue for the grey-to-colour change.** The grey
+   side is now held below the restored side in brightness, so a restored area
+   reads as brighter even with the colour removed. A browser test screenshots
+   the same view grey and restored, converts both to greyscale and fails if the
+   difference is too small. The blue-grey tint used to _lift_ dark colours,
+   which made the grey side brighter than the restored one for dark greens —
+   exactly backwards. That is fixed.
 
 4. **The colour zone array holds eight zones.** Chapter 1 creates four, so it
    never overflows. A later chapter with more springs will start dropping the
-   oldest zone. The limit is `COLOR.maxZones`; raising it costs shader time in
-   a loop that runs per pixel.
+   oldest zone. The limit is `COLOR.maxZones`; raising it costs shader time in a
+   loop that runs per pixel. Left as it is on purpose.
 
-5. **The valley is one mesh with no chunking.** It is about 27,000 triangles,
-   which is fine for this chapter, but a larger world will need splitting before
-   the bounds tree and the draw call become a problem.
+5. **The valley is one mesh with no chunking.** About 27,000 triangles, which is
+   fine for this chapter. A larger world will need splitting before the bounds
+   tree and the draw call become a problem. Left as it is on purpose.
 
-6. **The bridge turns golden by nudging its material colours each frame.**
-   It works and it looks right, but it changes shared materials in place rather
-   than driving a uniform. If a later chapter has two bridges they would share
-   the change.
+6. **Fixed: the bridge turning golden.** It used to nudge shared material
+   colours by a small step every frame, which was frame-rate dependent and
+   destroyed the original colours. The bridge now keeps its own colours and the
+   blend is set from the whole amount, so the result is the same however many
+   frames it took and it can be put back.
 
-7. **The learning checks are written on every change.** That is a `localStorage`
-   write per event. It is cheap at this scale and it means a player who quits
-   mid-scene keeps their data, but a busier chapter should batch it.
+7. **Fixed: a storage write per learning check.** Changes are now held in memory
+   and written every five seconds, when a scene ends, and when the page is
+   hidden or closed. Writing a value that has not changed does nothing.
 
-8. **Audio does not resume by itself after a long pause on iOS.** It restarts on
-   the next panel tap. I could not test this on a real iOS device.
+8. **Fixed: audio after the page was hidden.** The game now resumes the audio
+   context when the page comes back, and saves progress when it goes away. This
+   still could not be tried on a real iOS device.
 
----
+9. **`skyStrokes` and `treeBlobs` follow the tier the game starts with.** They
+   are baked into the sky shader and the tree geometry at world build, so a
+   quality change during play does not alter them. Both are cheap; the grass,
+   the painting filter and the resolution are where the cost is, and all three
+   do change at once.
 
 ## 7. Open questions
 
