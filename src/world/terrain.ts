@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
-import { clamp01, fbm2d, smoothstep } from '../core/math';
+import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
 import { applyColorRestore } from '../render/colorRestore';
 
 // three-mesh-bvh drives both the ground checks and the prop collision.
@@ -49,11 +49,12 @@ export function terrainHeight(x: number, z: number): number {
   // The sides rise into hills. Never a wall, always a slope, and the tops
   // round off instead of cutting to a flat plateau.
   const over = Math.max(0, d - half);
-  h += softCap(over * over * 0.032 + over * 0.28, 26);
+  h += softCap(over * over * 0.03 + over * 0.26, 22);
 
-  // Far hills close the valley at each end.
+  // Far hills close the valley at each end. They stay low, so the sky is
+  // still visible from the far end of the walk.
   const beyond = Math.max(0, z - WORLD.lengthStart, WORLD.lengthEnd - z);
-  h += softCap(beyond * beyond * 0.05 + beyond * 0.5, 22);
+  h += softCap(beyond * beyond * 0.018 + beyond * 0.3, 12);
 
   // The floor is flattened where the player has to stand still.
   h = flattenAround(h, x, z, LAYOUT.spring1.x, LAYOUT.spring1.z, 7);
@@ -98,7 +99,7 @@ export function borderAmount(x: number, z: number): number {
 
 export interface TerrainResult {
   mesh: THREE.Mesh;
-  chasm: THREE.Mesh;
+  chasm: THREE.Group;
   /** Meshes the ground raycast tests against. */
   colliders: THREE.Mesh[];
 }
@@ -135,9 +136,9 @@ export function buildTerrain(): TerrainResult {
 
       // Light is baked into the vertex colours instead of a shadow map.
       const slope = terrainHeight(x + 1, z) - y;
-      const shade = clamp01(0.5 + slope * 0.55 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.34);
+      const shade = clamp(0.54 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.32, 0.42, 1);
       const height01 = clamp01((y + 2) / 16);
-      tmp.copy(deep).lerp(green, clamp01(1 - height01 * 1.5));
+      tmp.copy(deep).lerp(green, clamp01(1.15 - height01 * 1.4));
       tmp.lerp(violet, clamp01((height01 - 0.45) * 1.6));
       tmp.multiplyScalar(shade);
       colors.push(tmp.r, tmp.g, tmp.b);
@@ -176,20 +177,53 @@ export function buildTerrain(): TerrainResult {
   return { mesh, chasm: buildChasm(), colliders: [mesh] };
 }
 
-/** A dark, soft floor far below the gap so it does not read as a hole in space. */
-function buildChasm(): THREE.Mesh {
+/**
+ * The gap in the ground. It is built as an open box that sits exactly inside
+ * the hole in the terrain: four dark walls dropping from the rim and a floor
+ * far below. Each wall stops at the ground height above it, so no wall ever
+ * sticks up out of the valley floor.
+ */
+function buildChasm(): THREE.Group {
   const g = LAYOUT.gap;
-  const geo = new THREE.PlaneGeometry(g.x1 - g.x0 + 8, g.z1 - g.z0 + 8, 8, 8);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, -9 + fbm2d(pos.getX(i) * 0.2, pos.getZ(i) * 0.2, 2, 5) * 2);
-  }
-  geo.computeVertexNormals();
-  const mat = applyColorRestore(
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(PALETTE.blockage).multiplyScalar(0.5) }),
+  const group = new THREE.Group();
+  group.name = 'chasm';
+  const cx = (g.x0 + g.x1) / 2;
+  const cz = (g.z0 + g.z1) / 2;
+  const width = g.x1 - g.x0;
+  const depth = g.z1 - g.z0;
+  const floorY = -12;
+
+  // Everything down here sits in shadow, so the colours stay very dark.
+  const rock = new THREE.Color(PALETTE.blockage).multiplyScalar(0.12);
+  const wallMat = applyColorRestore(
+    new THREE.MeshLambertMaterial({ color: rock, flatShading: true }),
   );
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set((g.x0 + g.x1) / 2, 0, (g.z0 + g.z1) / 2);
-  return mesh;
+
+  const floorGeo = new THREE.PlaneGeometry(width + 2, depth + 2, 6, 6);
+  floorGeo.rotateX(-Math.PI / 2);
+  const pos = floorGeo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, floorY + fbm2d(pos.getX(i) * 0.2, pos.getZ(i) * 0.2, 2, 5) * 2);
+  }
+  floorGeo.computeVertexNormals();
+  const floor = new THREE.Mesh(floorGeo, wallMat);
+  floor.position.set(cx, 0, cz);
+  group.add(floor);
+
+  // Four walls, each reaching up to the ground height at its own edge.
+  const walls: [number, number, number, number][] = [
+    [width, cx, g.z0, 0],
+    [width, cx, g.z1, Math.PI],
+    [depth, g.x0, cz, Math.PI / 2],
+    [depth, g.x1, cz, -Math.PI / 2],
+  ];
+  for (const [span, x, z, rotY] of walls) {
+    const top = terrainHeight(x, z) + 0.2;
+    const height = top - floorY;
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(span, height), wallMat);
+    wall.position.set(x, floorY + height / 2, z);
+    wall.rotation.y = rotY;
+    group.add(wall);
+  }
+  return group;
 }

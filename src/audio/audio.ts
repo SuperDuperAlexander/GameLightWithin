@@ -215,7 +215,8 @@ export class AudioEngine {
         for (const f of [261.6, 329.6, 392, 523.3]) this.bell(now, f, 0.075, 3.4);
         break;
       case 'thanks':
-        for (const [i, f] of [392, 523.3, 659.3, 784].entries()) this.bell(now + i * 0.18, f, 0.08, 4);
+        for (const [i, f] of [392, 523.3, 659.3, 784].entries())
+          this.bell(now + i * 0.18, f, 0.08, 4);
         break;
       case 'uiSelect':
         this.bell(now, 660, 0.04, 0.5);

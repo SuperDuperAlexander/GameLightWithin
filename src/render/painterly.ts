@@ -35,12 +35,14 @@ const KuwaharaShader = {
     uniform float uStep;
     uniform float uAmount;
 
-    // Four overlapping sectors of a 7 by 7 window. The sector with the lowest
-    // variance wins, so flat areas smooth out and edges stay sharp.
+    // Four overlapping sectors of a 5 by 5 window. The sector with the lowest
+    // variance wins, so flat areas smooth out and edges stay sharp. The window
+    // is kept small and the step is widened instead, because the cost grows
+    // with the square of the window but only the step sets the patch size.
     void sector(int sx, int sy, out vec3 mean, out float variance) {
       vec3 sum = vec3(0.0);
       vec3 sumSq = vec3(0.0);
-      const int R = 3;
+      const int R = 2;
       for (int j = 0; j <= R; j++) {
         for (int i = 0; i <= R; i++) {
           vec2 off = vec2(float(i * sx), float(j * sy)) * uTexel * uStep;
@@ -173,7 +175,7 @@ export class PainterlyRenderer {
   applyQuality(q: QualitySettings): void {
     // A lower tier widens the brush step and drops the post-processing
     // resolution, which is where most of the cost sits.
-    const step = q.paintScale >= 1 ? 1.3 : q.paintScale >= 0.75 ? 2.0 : 2.6;
+    const step = q.paintScale >= 1 ? 1.9 : q.paintScale >= 0.75 ? 2.8 : 3.6;
     const u = this.kuwahara.uniforms.uStep;
     if (u) u.value = step;
     this.renderScale = q.paintScale >= 1 ? 1 : q.paintScale >= 0.75 ? 0.85 : 0.5;

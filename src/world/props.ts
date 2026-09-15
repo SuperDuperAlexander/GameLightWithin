@@ -120,7 +120,7 @@ export function buildBridge(): THREE.Group {
   const group = new THREE.Group();
   group.name = 'bridge';
   const g = LAYOUT.gap;
-  const span = g.z1 - g.z0 + 4;
+  const span = g.z1 - g.z0 + 7;
 
   const deck = new THREE.Mesh(
     new THREE.BoxGeometry(3.4, 0.36, span, 1, 1, 14),
@@ -130,7 +130,7 @@ export function buildBridge(): THREE.Group {
   for (let i = 0; i < pos.count; i++) {
     // A gentle arch across the gap.
     const t = pos.getZ(i) / (span / 2);
-    pos.setY(i, pos.getY(i) + (1 - t * t) * 0.55);
+    pos.setY(i, pos.getY(i) + (1 - t * t) * 0.34);
   }
   deck.geometry.computeVertexNormals();
   deck.geometry.computeBoundsTree();
@@ -144,7 +144,7 @@ export function buildBridge(): THREE.Group {
         propMaterial(0x8d7a60),
       );
       const t = (i / 6) * 2 - 1;
-      post.position.set(side * 1.55, 0.62 + (1 - t * t) * 0.55, t * (span / 2 - 0.6));
+      post.position.set(side * 1.55, 0.62 + (1 - t * t) * 0.34, t * (span / 2 - 0.6));
       group.add(post);
     }
     const rail = new THREE.Mesh(
@@ -154,10 +154,10 @@ export function buildBridge(): THREE.Group {
     const rp = rail.geometry.getAttribute('position');
     for (let i = 0; i < rp.count; i++) {
       const t = rp.getZ(i) / ((span - 1) / 2);
-      rp.setY(i, rp.getY(i) + (1 - t * t) * 0.55);
+      rp.setY(i, rp.getY(i) + (1 - t * t) * 0.34);
     }
     rail.geometry.computeVertexNormals();
-    rail.position.set(side * 1.55, 1.04, 0);
+    rail.position.set(side * 1.55, 1.02, 0);
     group.add(rail);
   }
   return group;

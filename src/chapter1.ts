@@ -33,7 +33,15 @@ import { DebugPanel } from './ui/debug';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
-type Phase = 'start' | 'startQuestions' | 'playing' | 'reflect' | 'understand' | 'apply' | 'endQuestions' | 'end';
+type Phase =
+  | 'start'
+  | 'startQuestions'
+  | 'playing'
+  | 'reflect'
+  | 'understand'
+  | 'apply'
+  | 'endQuestions'
+  | 'end';
 
 /** How many calm breaths scene 1 needs before the glow appears. */
 const WAKE_BREATHS = 3;
@@ -74,6 +82,10 @@ export class Chapter1 {
   /** Automatic calm breathing for the browser tests. */
   private autoClock = 0;
   private autoHeld = false;
+  /** Counters the browser tests read. They are never shown to the player. */
+  private breathsTotal = 0;
+  private breathsCalm = 0;
+  private lastDt = 0;
   private readonly tmp = new THREE.Vector3();
 
   constructor(private readonly game: Game) {
@@ -116,15 +128,29 @@ export class Chapter1 {
 
   private buildSceneObjects(): void {
     const scene = this.game.world.scene;
-    scene.add(this.motes.group, this.fogVolume.group, this.sprout.group, this.bird, this.butterfly.group);
+    scene.add(
+      this.motes.group,
+      this.fogVolume.group,
+      this.sprout.group,
+      this.bird,
+      this.butterfly.group,
+    );
 
-    this.fogVolume.group.position.set(LAYOUT.fog.x, terrainHeight(LAYOUT.fog.x, LAYOUT.fog.z), LAYOUT.fog.z);
+    this.fogVolume.group.position.set(
+      LAYOUT.fog.x,
+      terrainHeight(LAYOUT.fog.x, LAYOUT.fog.z),
+      LAYOUT.fog.z,
+    );
     this.sprout.group.position.set(
       LAYOUT.seedSpot.x,
       terrainHeight(LAYOUT.seedSpot.x, LAYOUT.seedSpot.z),
       LAYOUT.seedSpot.z,
     );
-    this.bird.position.set(LAYOUT.bird.x, terrainHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17, LAYOUT.bird.z);
+    this.bird.position.set(
+      LAYOUT.bird.x,
+      terrainHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17,
+      LAYOUT.bird.z,
+    );
 
     for (const spring of this.receive.springs) {
       const glow = new SpringGlow();
@@ -158,7 +184,11 @@ export class Chapter1 {
   }
 
   private wireEvents(): void {
-    this.bus.on('breathCompleted', ({ calm }) => this.onBreathCompleted(calm));
+    this.bus.on('breathCompleted', ({ calm }) => {
+      this.breathsTotal++;
+      if (calm) this.breathsCalm++;
+      this.onBreathCompleted(calm);
+    });
     this.bus.on('zoneAdded', ({ x, z, radius }) => this.game.world.color.addZone(x, z, radius));
     this.bus.on('lightCollected', ({ from, amount }) => this.onLightCollected(from, amount));
     this.bus.on('springRevealed', ({ id }) => {
@@ -176,7 +206,9 @@ export class Chapter1 {
       if (id === 'bird') this.bird.visible = true;
       if (id === 'butterfly') {
         this.butterfly.fly(
-          LAYOUT.butterflyPath.map((p) => new THREE.Vector3(p.x, terrainHeight(p.x, p.z) + 1.3, p.z)),
+          LAYOUT.butterflyPath.map(
+            (p) => new THREE.Vector3(p.x, terrainHeight(p.x, p.z) + 1.3, p.z),
+          ),
         );
       }
     });
@@ -244,8 +276,10 @@ export class Chapter1 {
       this.manifest.plant(true, 1);
       this.manifest.state = 'complete';
       this.manifest.riseTime = MANIFEST.bridgeRiseSeconds;
-      this.game.world.setBridgeRise(1);
+      // The bridgeComplete handler starts the rise from zero, so raise the
+      // bridge after it, not before.
       this.bus.emit('bridgeComplete');
+      this.game.world.setBridgeRise(1);
     }
     if (scene >= 3) this.calm.set(CALM.heartThreshold + 0.05);
     this.enterScene(scene, true);
@@ -394,8 +428,10 @@ export class Chapter1 {
     if (spring) {
       const anchor = this.game.world.springAnchors.get(spring.config.id);
       if (anchor) {
-        this.motes.send(this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(), RECEIVE.moteFlightSeconds, () =>
-          this.light.add(1),
+        this.motes.send(
+          this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
+          RECEIVE.moteFlightSeconds,
+          () => this.light.add(1),
         );
       }
     }
@@ -409,13 +445,18 @@ export class Chapter1 {
     // The fog dissolves into motes that flow into the player.
     for (let i = 0; i < amount * 6; i++) {
       const start = this.fogVolume.randomPoint(new THREE.Vector3());
-      this.motes.send(start, TRANSFORM.dissolveSeconds * (0.5 + Math.random() * 0.5), i < amount ? () => this.light.add(1) : null);
+      this.motes.send(
+        start,
+        TRANSFORM.dissolveSeconds * (0.5 + Math.random() * 0.5),
+        i < amount ? () => this.light.add(1) : null,
+      );
     }
   }
 
   // ---------- per frame ----------
 
   update(dt: number): void {
+    this.lastDt = dt;
     const p = this.game.world.playerPosition;
     const walking = this.game.speed > 0.25;
 
@@ -495,14 +536,17 @@ export class Chapter1 {
           this.checks.set('walkedAwayFromSeed', true);
         }
         if (this.manifest.state === 'complete') {
-          this.game.world.setBridgeRise(clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds));
+          this.game.world.setBridgeRise(
+            clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds),
+          );
           if (this.manifest.riseTime >= MANIFEST.bridgeRiseSeconds) this.advanceTo(6);
         }
         break;
       }
       case 6: {
         this.thanks.update(dt);
-        if (this.thanks.complete && this.game.world.color.globalColor >= 0.999) this.finishChapter();
+        if (this.thanks.complete && this.game.world.color.globalColor >= 0.999)
+          this.finishChapter();
         break;
       }
     }
@@ -517,7 +561,10 @@ export class Chapter1 {
     const inFog = !this.transform.done && fogDistance <= this.transform.radius;
 
     // Step 1: the thought appears inside the fog and cannot be skipped.
-    this.hud.setFogText(t().fog.thought, this.transform.step >= 1 && !this.transform.done ? this.transform.seeProgress : 0);
+    this.hud.setFogText(
+      t().fog.thought,
+      this.transform.step >= 1 && !this.transform.done ? this.transform.seeProgress : 0,
+    );
 
     // Step 2: the breath circle trembles a little and the wind bends the grass.
     const feeling = this.transform.step >= 2 && !this.transform.done;
@@ -532,15 +579,21 @@ export class Chapter1 {
     this.game.setDarken(darkTarget, dt);
 
     this.fogVolume.setDensity(
-      this.transform.done ? Math.max(0, 1 - this.transform.dissolveTime / TRANSFORM.dissolveSeconds) : 1 + this.transform.pushExtra * 0.35,
+      this.transform.done
+        ? Math.max(0, 1 - this.transform.dissolveTime / TRANSFORM.dissolveSeconds)
+        : 1 + this.transform.pushExtra * 0.35,
       this.transform.radius / LAYOUT.fog.radius,
     );
     this.fogVolume.group.position.x = this.transform.x;
     this.fogVolume.group.position.z = this.transform.z;
 
-    this.hud.setPushVisible(this.scene === 4 && this.transform.pushAvailable && !this.transform.done);
+    this.hud.setPushVisible(
+      this.scene === 4 && this.transform.pushAvailable && !this.transform.done,
+    );
     this.hud.setInteractVisible(
-      this.scene === 5 && this.manifest.state === 'none' && dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
+      this.scene === 5 &&
+        this.manifest.state === 'none' &&
+        dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
     );
 
     // Spring glows: bright while they still hold light, gentle once empty.
@@ -558,17 +611,25 @@ export class Chapter1 {
       const strength = spring.empty ? 0.5 : near ? 1.1 : 0.55;
       // The halo fades with distance, so it never reads as a marker from afar.
       const fade = clamp01(1 - (d - RECEIVE.drawRadius) / 26);
-      glow.setStrength(strength * (0.35 + 0.65 * fade), spring.empty ? 2.2 : 1.9 + (near ? 0.4 : 0));
+      glow.setStrength(
+        strength * (0.35 + 0.65 * fade),
+        spring.empty ? 2.2 : 1.9 + (near ? 0.4 : 0),
+      );
     }
 
-    this.sprout.setState(this.manifest.state === 'growing', this.manifest.progress, this.manifest.paused);
+    this.sprout.setState(
+      this.manifest.state === 'growing',
+      this.manifest.progress,
+      this.manifest.paused,
+    );
 
     // The bridge turns golden when the player gives thanks on it.
     if (this.thanks.golden > 0) {
       this.game.world.bridge.traverse((o) => {
         const mesh = o as THREE.Mesh;
         const mat = mesh.material as THREE.MeshLambertMaterial | undefined;
-        if (mat?.color) mat.color.lerp(new THREE.Color(PALETTE.receiveGold), this.thanks.golden * 0.04);
+        if (mat?.color)
+          mat.color.lerp(new THREE.Color(PALETTE.receiveGold), this.thanks.golden * 0.04);
       });
     }
 
@@ -585,7 +646,11 @@ export class Chapter1 {
   /** Short control hints only. They never explain what anything means. */
   private currentHint(px: number, pz: number): string | null {
     if (this.phase !== 'playing') return null;
-    if (this.scene === 5 && this.manifest.state === 'none' && dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4) {
+    if (
+      this.scene === 5 &&
+      this.manifest.state === 'none' &&
+      dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4
+    ) {
       return t().seed.plant;
     }
     return null;
@@ -597,8 +662,14 @@ export class Chapter1 {
     const drone = this.transform.done
       ? 0
       : clamp01(1 - smoothstep(this.transform.radius, TRANSFORM.seeRadius * 1.6, fogDistance));
-    const muffle = !this.transform.done && fogDistance <= this.transform.radius && this.transform.step >= 3 ? 0.75 : 0;
-    const warmth = Math.max(this.game.world.color.globalColor, clamp01(this.game.world.color.zones.length / 4));
+    const muffle =
+      !this.transform.done && fogDistance <= this.transform.radius && this.transform.step >= 3
+        ? 0.75
+        : 0;
+    const warmth = Math.max(
+      this.game.world.color.globalColor,
+      clamp01(this.game.world.color.zones.length / 4),
+    );
     this.audio.update(
       this.breath.playerRing,
       this.breath.phase === 'inhale',
@@ -613,6 +684,18 @@ export class Chapter1 {
     return {
       phase: this.phase,
       scene: this.scene,
+      breathPhase: this.breath.phase,
+      breathsTotal: this.breathsTotal,
+      breathsCalm: this.breathsCalm,
+      wakeBreaths: this.wakeBreaths,
+      speed: Number(this.game.speed.toFixed(3)),
+      autoHeld: this.autoHeld,
+      autoClock: Number(this.autoClock.toFixed(2)),
+      preset: this.breath.getPreset().id,
+      fps: this.game.fps.value,
+      lastDt: Number(this.lastDt.toFixed(4)),
+      worstMs: Math.round(this.game.fps.worstMs),
+      paused: this.game.paused,
       calm: Number(this.calm.get().toFixed(3)),
       light: this.light.get(),
       fogStep: this.transform.step,
@@ -623,7 +706,11 @@ export class Chapter1 {
       thanks: this.thanks.breaths,
       globalColor: Number(this.game.world.color.globalColor.toFixed(3)),
       zones: this.game.world.color.zones.length,
-      springs: this.receive.springs.map((s) => ({ id: s.config.id, left: s.remaining, revealed: s.revealed })),
+      springs: this.receive.springs.map((s) => ({
+        id: s.config.id,
+        left: s.remaining,
+        revealed: s.revealed,
+      })),
       birdShown: this.hints.birdShown,
       butterflyShown: this.hints.butterflyShown,
       maxZones: COLOR.maxZones,
@@ -631,30 +718,50 @@ export class Chapter1 {
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   /** Test helpers, only reachable through `window.__lw` behind a debug flag. */
-  testApi(): Record<string, (...args: never[]) => unknown> {
+  testApi(): Record<string, (...args: any[]) => unknown> {
     return {
       walkTo: ((x: number, z: number) => {
         this.game.autoWalk = { x, z };
-      }) as (...args: never[]) => unknown,
-      walking: (() => this.game.autoWalk !== null) as (...args: never[]) => unknown,
+      }) as (...args: any[]) => unknown,
+      walking: (() => this.game.autoWalk !== null) as (...args: any[]) => unknown,
       stopWalking: (() => {
         this.game.autoWalk = null;
-      }) as (...args: never[]) => unknown,
+      }) as (...args: any[]) => unknown,
       teleport: ((x: number, z: number) => {
         this.game.world.placePlayer(x, z);
         this.game.camera.snapTo(this.game.world.playerPosition);
-      }) as (...args: never[]) => unknown,
-      push: (() => this.onPush()) as (...args: never[]) => unknown,
-      interact: (() => this.onInteract()) as (...args: never[]) => unknown,
+      }) as (...args: any[]) => unknown,
+      push: (() => this.onPush()) as (...args: any[]) => unknown,
+      interact: (() => this.onInteract()) as (...args: any[]) => unknown,
       plantNow: (() => {
         const paid = this.light.spend(MANIFEST.cost);
         return this.manifest.plant(paid, this.calm.get());
-      }) as (...args: never[]) => unknown,
-      setCalm: ((v: number) => this.calm.set(v)) as (...args: never[]) => unknown,
-      addLight: ((v: number) => this.light.add(v)) as (...args: never[]) => unknown,
-      snapshot: (() => this.snapshot()) as (...args: never[]) => unknown,
-      answers: (() => ({ start: this.save.startAnswers, end: this.save.endAnswers })) as (...args: never[]) => unknown,
+      }) as (...args: any[]) => unknown,
+      setCalm: ((v: number) => this.calm.set(v)) as (...args: any[]) => unknown,
+      setGlobalColor: ((v: number) => {
+        this.game.world.color.setGlobalTarget(v, 0.001);
+      }) as (...args: any[]) => unknown,
+      revealSpring: ((id: string) => {
+        const spring = this.receive.get(id);
+        if (!spring) return false;
+        spring.revealed = true;
+        const anchor = this.game.world.springAnchors.get(id);
+        if (anchor) anchor.visible = true;
+        return true;
+      }) as (...args: any[]) => unknown,
+      lookAt: ((yaw: number, pitch: number) => {
+        this.game.camera.yaw = yaw;
+        this.game.camera.pitch = pitch;
+        this.game.camera.snapTo(this.game.world.playerPosition);
+      }) as (...args: any[]) => unknown,
+      addLight: ((v: number) => this.light.add(v)) as (...args: any[]) => unknown,
+      snapshot: (() => this.snapshot()) as (...args: any[]) => unknown,
+      answers: (() => ({ start: this.save.startAnswers, end: this.save.endAnswers })) as (
+        ...args: any[]
+      ) => unknown,
     };
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }

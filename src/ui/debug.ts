@@ -50,7 +50,10 @@ export class DebugPanel {
       ['sceneTimes', JSON.stringify(info.checks.timePerScene)],
     ];
     this.list.replaceChildren(
-      ...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', { id: `dbg-${k.replace(/\s/g, '')}` }, v)]),
+      ...rows.flatMap(([k, v]) => [
+        el('dt', {}, k),
+        el('dd', { id: `dbg-${k.replace(/\s/g, '')}` }, v),
+      ]),
     );
   }
 }

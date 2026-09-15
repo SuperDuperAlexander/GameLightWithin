@@ -56,7 +56,15 @@ export class MoteFlow {
       mesh,
       from: from.clone(),
       // It rises first, then curves toward the player.
-      rise: from.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 1.9 + Math.random(), (Math.random() - 0.5) * 1.4)),
+      rise: from
+        .clone()
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 1.4,
+            1.9 + Math.random(),
+            (Math.random() - 0.5) * 1.4,
+          ),
+        ),
       time: 0,
       duration,
       onArrive,
@@ -185,7 +193,9 @@ export class FogVolume {
           float soft = pow(1.0 - facing, 0.6);
           float drift = 0.85 + 0.15 * sin(uTime * 0.5 + vL.y * 1.6 + vL.x);
           float a = (1.0 - soft) * 0.24 * uDensity * drift;
-          gl_FragColor = vec4(uColor * (0.75 + 0.35 * facing), clamp(a, 0.0, 0.55));
+          // Lift the blockage blue toward a pale, melancholic haze.
+          vec3 col = mix(uColor, vec3(0.62, 0.65, 0.76), 0.45) * (0.8 + 0.3 * facing);
+          gl_FragColor = vec4(col, clamp(a, 0.0, 0.5));
         }
       `,
     });
@@ -244,12 +254,12 @@ export class Sprout {
 
   constructor() {
     this.stem = new THREE.Mesh(
-      new THREE.ConeGeometry(0.12, 0.6, 6),
+      new THREE.ConeGeometry(0.2, 1.05, 6),
       applyColorRestore(new THREE.MeshLambertMaterial({ color: PALETTE.growthGreen })),
     );
-    this.stem.position.y = 0.3;
-    this.glow = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), makeMoteMaterial(GOLD));
-    this.glow.position.y = 0.55;
+    this.stem.position.y = 0.52;
+    this.glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), makeMoteMaterial(GOLD));
+    this.glow.position.y = 1.0;
     this.group.add(this.stem, this.glow);
     this.group.visible = false;
     this.group.name = 'sprout';
@@ -274,7 +284,9 @@ export class Sprout {
 /** The bird hint in scene 3. It lands near the hidden spring and sits still. */
 export function buildBird(): THREE.Group {
   const group = new THREE.Group();
-  const mat = applyColorRestore(new THREE.MeshLambertMaterial({ color: 0xbfb3a4, flatShading: true }));
+  const mat = applyColorRestore(
+    new THREE.MeshLambertMaterial({ color: 0xbfb3a4, flatShading: true }),
+  );
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat);
   body.scale.set(1, 0.9, 1.35);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), mat);

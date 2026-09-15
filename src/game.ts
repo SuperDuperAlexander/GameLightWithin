@@ -10,6 +10,13 @@ import type { QualitySettings, QualityTier } from './core/quality';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
 import { borderAmount } from './world/terrain';
+
+/** The fixed simulation step, in seconds. */
+const FIXED_STEP = 1 / 60;
+/** The most real time a single frame may catch up on, in seconds. */
+const MAX_CATCHUP = 1;
+/** A hard step limit, so one very slow frame cannot lock the page. */
+const MAX_STEPS = 90;
 import { World } from './world/world';
 
 /**
@@ -29,6 +36,7 @@ export class Game {
 
   private readonly probe = new QualityProbe();
   private last = 0;
+  private accumulator = 0;
   private running = false;
   private rafId = 0;
   /** Metres per second the player moved on the last frame. */
@@ -128,26 +136,50 @@ export class Game {
   private loop = (now: number): void => {
     if (!this.running) return;
     this.rafId = requestAnimationFrame(this.loop);
-    // A long pause, for example a hidden tab, must not jump the world forward.
-    const dt = Math.min(0.05, Math.max(0.0005, (now - this.last) / 1000));
+
+    const real = Math.max(0.0001, (now - this.last) / 1000);
     this.last = now;
+    this.fps.update(real);
+
+    const picked = this.probe.sample(real);
+    if (picked && this.flags.quality === null && loadSettings().quality === 'auto')
+      this.setQuality(picked);
+
+    // The world runs in fixed steps, so a slow frame does not make the breath
+    // rhythm or the seed timer run slow with it. The catch-up is capped, so a
+    // hidden tab cannot jump the world forward when it comes back.
+    this.accumulator = Math.min(this.accumulator + real, MAX_CATCHUP);
+    let steps = 0;
+    while (this.accumulator >= FIXED_STEP && steps < MAX_STEPS) {
+      this.accumulator -= FIXED_STEP;
+      steps++;
+      this.simulate(FIXED_STEP);
+    }
+    if (steps === MAX_STEPS) this.accumulator = 0;
+
+    this.painter.render(real, this.time);
+  };
+
+  /** One fixed simulation step. */
+  private simulate(dt: number): void {
     this.time += dt;
-    this.fps.update(dt);
-
-    const picked = this.probe.sample(dt);
-    if (picked && this.flags.quality === null && loadSettings().quality === 'auto') this.setQuality(picked);
-
     this.input.sample();
     if (!this.paused) this.moveAndAim(dt);
-    // The chapter runs every frame, even while a panel is open, so the world
+    // The chapter runs every step, even while a panel is open, so the world
     // keeps drawing behind it. The chapter itself decides what may advance.
     this.onFrame?.(dt, this.time);
-    this.world.update(dt, this.calm, this.light, this.wind.strength, this.wind.radius, this.wind.x, this.wind.z);
+    this.world.update(
+      dt,
+      this.calm,
+      this.light,
+      this.wind.strength,
+      this.wind.radius,
+      this.wind.x,
+      this.wind.z,
+    );
     this.camera.update(dt, this.world.playerPosition);
     this.input.endFrame();
-
-    this.painter.render(dt, this.time);
-  };
+  }
 
   /** Camera and player movement. Skipped while the game is paused. */
   private moveAndAim(dt: number): void {

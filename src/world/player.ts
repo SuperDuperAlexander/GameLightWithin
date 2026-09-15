@@ -76,8 +76,9 @@ export class PlayerFigure {
           uniform float uStrength;
           void main() {
             float rim = 1.0 - abs(dot(normalize(vNormalW), normalize(vViewDir)));
-            float a = pow(rim, 2.4) * uStrength;
-            gl_FragColor = vec4(uColor, a * 0.55);
+            // A tight rim keeps the glow a halo around the figure.
+            float a = pow(rim, 3.2) * uStrength;
+            gl_FragColor = vec4(uColor, a * 0.16);
           }
         `,
       }),
@@ -136,7 +137,7 @@ export class PlayerFigure {
     this.glow.scale.setScalar(r);
     const mat = this.glow.material as THREE.ShaderMaterial;
     const u = mat.uniforms.uStrength;
-    if (u) u.value = 0.18 + this.glowAmount * 1.25;
+    if (u) u.value = 0.22 + this.glowAmount * 1.5;
   }
 
   setLight(count: number): void {

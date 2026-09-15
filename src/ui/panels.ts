@@ -44,7 +44,12 @@ export class Panels {
   }
 
   /** Start screen: title, Begin and Settings. */
-  startScreen(onBegin: () => void, onSettings: () => void, hasSave: boolean, onContinue: () => void): void {
+  startScreen(
+    onBegin: () => void,
+    onSettings: () => void,
+    hasSave: boolean,
+    onContinue: () => void,
+  ): void {
     const s = t();
     const panel = el(
       'div',
@@ -70,20 +75,36 @@ export class Panels {
       el('h2', { class: 'lw-heading' }, s.questions.heading),
     );
 
-    const done = button(s.questions.continue, 'lw-btn', this.tap(() => onDone(answers)));
+    const done = button(
+      s.questions.continue,
+      'lw-btn',
+      this.tap(() => onDone(answers)),
+    );
     done.disabled = true;
     const refresh = (): void => {
       done.disabled = answers.receive === null || answers.calm === null;
     };
 
     for (const key of ['receive', 'calm'] as const) {
-      panel.append(el('p', { class: 'lw-question' }, key === 'receive' ? s.questions.receive : s.questions.calm));
+      panel.append(
+        el(
+          'p',
+          { class: 'lw-question' },
+          key === 'receive' ? s.questions.receive : s.questions.calm,
+        ),
+      );
       const scale = el('div', { class: 'lw-scale', role: 'radiogroup', 'aria-label': key });
       const buttons: HTMLButtonElement[] = [];
       for (let i = 1; i <= 5; i++) {
         const b = el(
           'button',
-          { type: 'button', role: 'radio', 'aria-checked': 'false', 'data-ui': '1', 'data-value': String(i) },
+          {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': 'false',
+            'data-ui': '1',
+            'data-value': String(i),
+          },
           String(i),
         );
         b.addEventListener('click', () => {
@@ -108,7 +129,10 @@ export class Panels {
       if (stored !== null) buttons[stored - 1]?.setAttribute('aria-checked', 'true');
     }
 
-    panel.append(el('p', { class: 'lw-note' }, s.questions.privacy), el('div', { class: 'lw-row' }, done));
+    panel.append(
+      el('p', { class: 'lw-note' }, s.questions.privacy),
+      el('div', { class: 'lw-row' }, done),
+    );
     refresh();
     this.show(panel);
   }
@@ -249,7 +273,14 @@ export class Panels {
       row.append(b);
     }
 
-    panel.append(row, el('div', { class: 'lw-row' }, button(s.seed.cancel, 'lw-btn lw-btn--quiet', this.tap(onCancel))));
+    panel.append(
+      row,
+      el(
+        'div',
+        { class: 'lw-row' },
+        button(s.seed.cancel, 'lw-btn lw-btn--quiet', this.tap(onCancel)),
+      ),
+    );
     this.show(panel);
   }
 
@@ -267,15 +298,23 @@ export class Panels {
     const next = button(s.end.next, 'lw-btn', this.tap(onNext));
     next.style.display = 'none';
 
-    for (const answer of [s.reflect.answerCalm, s.reflect.answerImpatient, s.reflect.answerNothing]) {
+    for (const answer of [
+      s.reflect.answerCalm,
+      s.reflect.answerImpatient,
+      s.reflect.answerNothing,
+    ]) {
       row.append(
-        button(answer, 'lw-btn lw-btn--quiet', this.tap(() => {
-          reply.textContent = s.reflect.reply;
-          reply.style.visibility = 'visible';
-          row.style.display = 'none';
-          next.style.display = '';
-          next.focus();
-        })),
+        button(
+          answer,
+          'lw-btn lw-btn--quiet',
+          this.tap(() => {
+            reply.textContent = s.reflect.reply;
+            reply.style.visibility = 'visible';
+            row.style.display = 'none';
+            next.style.display = '';
+            next.focus();
+          }),
+        ),
       );
     }
     panel.append(row, reply, el('div', { class: 'lw-row' }, next));

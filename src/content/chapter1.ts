@@ -153,8 +153,8 @@ export const PLAYER = {
   radius: 0.45,
   height: 1.7,
   /** The soft glow radius at calm 1. */
-  glowRadiusMax: 3.2,
-  glowRadiusMin: 0.6,
+  glowRadiusMax: 2.1,
+  glowRadiusMin: 0.55,
 } as const;
 
 export const CAMERA = {
@@ -235,8 +235,8 @@ export const QUALITY = {
 
 export const TIERS = {
   low: { paintScale: 0.5, grassCards: 7000, particles: 40, skyStrokes: 5, treeBlobs: 4 },
-  medium: { paintScale: 0.75, grassCards: 18000, particles: 90, skyStrokes: 8, treeBlobs: 6 },
-  high: { paintScale: 1.0, grassCards: 36000, particles: 160, skyStrokes: 12, treeBlobs: 8 },
+  medium: { paintScale: 0.75, grassCards: 13000, particles: 90, skyStrokes: 8, treeBlobs: 6 },
+  high: { paintScale: 1.0, grassCards: 24000, particles: 160, skyStrokes: 12, treeBlobs: 8 },
 } as const;
 
 export type QualityTier = keyof typeof TIERS;

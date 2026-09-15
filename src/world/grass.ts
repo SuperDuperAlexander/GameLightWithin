@@ -64,12 +64,16 @@ export function buildGrass(count: number): THREE.Mesh {
       uGold: { value: new THREE.Color(PALETTE.receiveGold) },
       /** Fog centre and strength, so grass bends away from the blockage. */
       uWind: { value: new THREE.Vector4(LAYOUT.fog.x, LAYOUT.fog.z, 0, 0) },
+      uFadeStart: { value: 42 },
+      uFadeEnd: { value: 58 },
     },
     vertexShader: /* glsl */ `
       attribute vec3 aOffset;
       attribute vec4 aParams;
       uniform float uTime;
       uniform vec4 uWind;
+      uniform float uFadeStart;
+      uniform float uFadeEnd;
       varying vec2 vUv;
       varying vec3 vWorld;
       varying float vKind;
@@ -80,10 +84,19 @@ export function buildGrass(count: number): THREE.Mesh {
         vKind = aParams.z;
         vPhase = aParams.w;
 
+        // Grass far from the camera collapses to nothing. Distant cards are
+        // almost invisible anyway, and they are what costs the most to draw.
+        float camDist = distance(cameraPosition.xz, aOffset.xz);
+        float near = 1.0 - smoothstep(uFadeStart, uFadeEnd, camDist);
+        if (near <= 0.001) {
+          gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+          return;
+        }
+
         // Camera-facing card.
         vec3 right = normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
         vec3 up = vec3(0.0, 1.0, 0.0);
-        vec3 local = right * position.x * aParams.x + up * position.y * aParams.y;
+        vec3 local = (right * position.x * aParams.x + up * position.y * aParams.y) * near;
 
         // Each blade leans a little in its own direction.
         float lean = sin(vPhase * 3.7) * 0.5;

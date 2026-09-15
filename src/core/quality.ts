@@ -66,19 +66,32 @@ export class QualityProbe {
   }
 }
 
-/** A rolling frames-per-second counter for the debug panel and the report. */
+/**
+ * A rolling frames-per-second counter for the debug panel and the report.
+ * It must be fed real elapsed seconds, never a clamped simulation step, or it
+ * reports the clamp instead of the frame rate.
+ */
 export class FpsMeter {
   private frames = 0;
   private acc = 0;
   value = 0;
+  /** The slowest frame seen since the last reset, in milliseconds. */
+  worstMs = 0;
 
-  update(dt: number): void {
+  update(realSeconds: number): void {
     this.frames++;
-    this.acc += dt;
+    this.acc += realSeconds;
+    this.worstMs = Math.max(this.worstMs, realSeconds * 1000);
     if (this.acc >= 0.5) {
       this.value = Math.round(this.frames / this.acc);
       this.frames = 0;
       this.acc = 0;
     }
+  }
+
+  reset(): void {
+    this.frames = 0;
+    this.acc = 0;
+    this.worstMs = 0;
   }
 }
