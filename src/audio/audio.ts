@@ -27,6 +27,16 @@ export class AudioEngine {
     return this.started && this.ctx?.state === 'running';
   }
 
+  /**
+   * Browsers suspend an audio context when the page is hidden, and on iOS it
+   * does not always come back on its own. Call this when the page is shown
+   * again. It does nothing if audio was never started.
+   */
+  resume(): void {
+    if (!this.started || !this.ctx) return;
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
+  }
+
   /** Call this from a real user gesture. */
   async start(): Promise<void> {
     if (this.started) {

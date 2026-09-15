@@ -1,14 +1,16 @@
 import * as THREE from 'three';
-import { LAYOUT, PLAYER } from '../content/chapter1';
+import { LAYOUT, PLAYER, TIERS } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import type { QualitySettings } from '../core/quality';
 import { ColorRestoreState } from '../render/colorRestore';
-import { buildGrass, updateGrass } from './grass';
+import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
 import { PlayerFigure } from './player';
 import { buildBridge, buildSignStone, buildSpringBasin, scatterProps } from './props';
 import { buildSky, updateSky } from './sky';
 import { buildTerrain, terrainHeight } from './terrain';
+
+const GOLD = new THREE.Color(PALETTE.receiveGold);
 
 /**
  * Builds and holds the valley: terrain, sky, props, grass, the player figure
@@ -25,6 +27,9 @@ export class World {
   private readonly grass: THREE.Mesh;
   private readonly terrainMesh: THREE.Mesh;
   private readonly bridgeDeck: THREE.Mesh;
+  /** The bridge's own colours, kept so the golden blend stays reversible. */
+  private readonly bridgeColors: { material: THREE.MeshLambertMaterial; base: THREE.Color }[] = [];
+  private bridgeGold = -1;
   private clock = 0;
 
   constructor(quality: QualitySettings) {
@@ -55,8 +60,12 @@ export class World {
     this.scene.add(props.group);
     for (const b of props.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
 
-    this.grass = buildGrass(quality.grassCards);
+    // The grass is always built at the highest count. The tier only decides
+    // how many of those cards are drawn, so a quality change during play takes
+    // effect at once instead of needing the world rebuilt.
+    this.grass = buildGrass(TIERS.high.grassCards);
     this.scene.add(this.grass);
+    this.applyQuality(quality);
 
     for (const [id, spot] of [
       ['spring1', LAYOUT.spring1],
@@ -87,12 +96,37 @@ export class World {
     this.bridge.visible = false;
     this.scene.add(this.bridge);
     this.bridgeDeck = this.bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
+    this.bridge.traverse((o) => {
+      const material = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
+      if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
+        this.bridgeColors.push({ material, base: material.color.clone() });
+      }
+    });
 
     this.scene.add(this.player.group);
 
     // Distance haze. It thickens at the valley borders so they turn the player
     // back softly instead of stopping them at a wall.
     this.scene.fog = new THREE.Fog(new THREE.Color(PALETTE.skyGrey), 55, 210);
+  }
+
+  /**
+   * Blends the bridge toward gold. `t` is the whole amount, not a step, so the
+   * result is the same however many frames it took to get there and the bridge
+   * can be put back by passing 0.
+   */
+  setBridgeGold(t: number): void {
+    const amount = Math.max(0, Math.min(1, t));
+    if (amount === this.bridgeGold) return;
+    this.bridgeGold = amount;
+    for (const entry of this.bridgeColors) {
+      entry.material.color.copy(entry.base).lerp(GOLD, amount);
+    }
+  }
+
+  /** Applies a quality tier to everything that can change during play. */
+  applyQuality(quality: QualitySettings): void {
+    setGrassDensity(this.grass, quality.grassCards, quality.grassFade);
   }
 
   /** The height the player's feet rest at, or null where there is no ground. */

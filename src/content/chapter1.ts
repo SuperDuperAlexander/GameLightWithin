@@ -231,12 +231,56 @@ export const QUALITY = {
   /** Device pixel ratio cap on touch devices. */
   mobilePixelRatioCap: 1.5,
   desktopPixelRatioCap: 2,
+  /**
+   * The watchdog. The start probe only measures the first second, before the
+   * player has walked anywhere, so a device can still turn out slower than it
+   * looked. These settle it during play.
+   */
+  /** Seconds of frames the watchdog averages before it judges. */
+  watchdogWindowSeconds: 5,
+  /** Seconds to wait after a tier change before judging again. */
+  watchdogCooldownSeconds: 6,
+  /** Below this many frames per second the tier steps down, on a touch device. */
+  mobileFloorFps: 24,
+  /** Below this many frames per second the tier steps down, elsewhere. */
+  desktopFloorFps: 45,
 } as const;
 
+/**
+ * `grassCards` and `grassFade` change at run time: the grass is built once at
+ * the highest count and the tier only decides how many of those instances are
+ * drawn and how close they fade out. `skyStrokes` and `treeBlobs` are baked
+ * into the geometry when the world is built, so they follow the tier the game
+ * starts with.
+ */
 export const TIERS = {
-  low: { paintScale: 0.5, grassCards: 7000, particles: 40, skyStrokes: 5, treeBlobs: 4 },
-  medium: { paintScale: 0.75, grassCards: 13000, particles: 90, skyStrokes: 8, treeBlobs: 6 },
-  high: { paintScale: 1.0, grassCards: 24000, particles: 160, skyStrokes: 12, treeBlobs: 8 },
+  low: {
+    paintScale: 0.5,
+    grassCards: 7000,
+    grassFade: 24,
+    particles: 40,
+    skyStrokes: 5,
+    treeBlobs: 4,
+  },
+  medium: {
+    paintScale: 0.75,
+    grassCards: 13000,
+    grassFade: 36,
+    particles: 90,
+    skyStrokes: 8,
+    treeBlobs: 6,
+  },
+  high: {
+    paintScale: 1.0,
+    grassCards: 24000,
+    grassFade: 48,
+    particles: 160,
+    skyStrokes: 12,
+    treeBlobs: 8,
+  },
 } as const;
+
+/** Every tier from the cheapest to the most expensive. */
+export const TIER_ORDER = ['low', 'medium', 'high'] as const;
 
 export type QualityTier = keyof typeof TIERS;

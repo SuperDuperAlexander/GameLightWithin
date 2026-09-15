@@ -58,14 +58,15 @@ export function buildGrass(count: number): THREE.Mesh {
       uZoneCount: colorUniforms.uZoneCount,
       uGlobalColor: colorUniforms.uGlobalColor,
       uGreyTint: colorUniforms.uGreyTint,
+      uGreyDim: colorUniforms.uGreyDim,
       uGreen: { value: new THREE.Color(PALETTE.growthGreen) },
       uDeep: { value: new THREE.Color(PALETTE.deepGreen) },
       uRose: { value: new THREE.Color(PALETTE.heartRose) },
       uGold: { value: new THREE.Color(PALETTE.receiveGold) },
       /** Fog centre and strength, so grass bends away from the blockage. */
       uWind: { value: new THREE.Vector4(LAYOUT.fog.x, LAYOUT.fog.z, 0, 0) },
-      uFadeStart: { value: 42 },
-      uFadeEnd: { value: 58 },
+      uFadeStart: { value: 48 },
+      uFadeEnd: { value: 64 },
     },
     vertexShader: /* glsl */ `
       attribute vec3 aOffset;
@@ -126,6 +127,7 @@ export function buildGrass(count: number): THREE.Mesh {
       uniform int uZoneCount;
       uniform float uGlobalColor;
       uniform vec3 uGreyTint;
+      uniform float uGreyDim;
       uniform vec3 uGreen;
       uniform vec3 uDeep;
       uniform vec3 uRose;
@@ -170,7 +172,11 @@ export function buildGrass(count: number): THREE.Mesh {
 
         float amount = lwColorAmount(vWorld);
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
-        vec3 greyed = mix(vec3(lum), uGreyTint * (0.6 + lum * 0.8), 0.52);
+        // Same rule as every other world material: the grey side is held below
+        // the restored one in brightness, so the change reads without colour.
+        vec3 greyed = mix(vec3(lum), uGreyTint * (0.6 + lum * 0.8), 0.4);
+        float greyLum = dot(greyed, vec3(0.299, 0.587, 0.114));
+        greyed *= min(1.0, (lum * uGreyDim) / max(greyLum, 1e-4));
         gl_FragColor = vec4(mix(greyed, col, amount), 1.0);
       }
     `,
@@ -179,7 +185,27 @@ export function buildGrass(count: number): THREE.Mesh {
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = 'grass';
   mesh.frustumCulled = false;
+  // The full count is kept so a quality change can raise the density again.
+  mesh.userData.maxInstances = placed;
   return mesh;
+}
+
+/**
+ * Sets how much grass is drawn, without rebuilding anything.
+ *
+ * The cards were placed in a random order, so drawing the first `count` of
+ * them thins the meadow evenly instead of clearing one end of the valley.
+ * This is what makes a quality change take effect during play.
+ */
+export function setGrassDensity(grass: THREE.Mesh, count: number, fadeMetres: number): void {
+  const geo = grass.geometry as THREE.InstancedBufferGeometry;
+  const max = (grass.userData.maxInstances as number | undefined) ?? geo.instanceCount;
+  geo.instanceCount = Math.max(0, Math.min(max, Math.round(count)));
+  const mat = grass.material as THREE.ShaderMaterial;
+  const start = mat.uniforms.uFadeStart;
+  const end = mat.uniforms.uFadeEnd;
+  if (start) start.value = fadeMetres;
+  if (end) end.value = fadeMetres * 1.35;
 }
 
 /** Drives the sway and the wind that blows out of the fog. */

@@ -5,7 +5,13 @@ import type { DebugFlags } from './core/debugFlags';
 import { EventBus } from './core/events';
 import { InputState } from './core/input';
 import { clamp01, damp } from './core/math';
-import { FpsMeter, QualityProbe, pixelRatioCap, settingsFor } from './core/quality';
+import {
+  FpsMeter,
+  QualityProbe,
+  QualityWatchdog,
+  pixelRatioCap,
+  settingsFor,
+} from './core/quality';
 import type { QualitySettings, QualityTier } from './core/quality';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
@@ -35,6 +41,9 @@ export class Game {
   quality!: QualitySettings;
 
   private readonly probe = new QualityProbe();
+  private readonly watchdog = new QualityWatchdog();
+  /** True while the tier is chosen automatically. */
+  private autoQuality = true;
   private last = 0;
   private accumulator = 0;
   private running = false;
@@ -85,6 +94,7 @@ export class Game {
     const settings = loadSettings();
     const tier: QualityTier =
       this.flags.quality ?? (settings.quality === 'auto' ? 'medium' : settings.quality);
+    this.autoQuality = this.flags.quality === null && settings.quality === 'auto';
     this.quality = settingsFor(tier);
 
     this.world = new World(this.quality);
@@ -114,10 +124,25 @@ export class Game {
 
   /** Swaps the quality tier at runtime. */
   setQuality(tier: QualityTier): void {
+    if (this.quality?.tier === tier) return;
     this.quality = settingsFor(tier);
     this.renderer.setPixelRatio(this.quality.pixelRatio);
     this.painter.applyQuality(this.quality);
+    this.world.applyQuality(this.quality);
     this.resize();
+    // Give the new tier a fresh window before the watchdog judges again.
+    this.watchdog.restart();
+  }
+
+  /** The settings panel calls this when the player picks a tier by hand. */
+  setAutoQuality(on: boolean): void {
+    this.autoQuality = on;
+    if (on) this.watchdog.restart();
+  }
+
+  /** How many times the watchdog has stepped the tier down. */
+  get qualityDrops(): number {
+    return this.watchdog.steps;
   }
 
   setReducedMotion(on: boolean): void {
@@ -141,9 +166,16 @@ export class Game {
     this.last = now;
     this.fps.update(real);
 
-    const picked = this.probe.sample(real);
-    if (picked && this.flags.quality === null && loadSettings().quality === 'auto')
-      this.setQuality(picked);
+    // The start probe picks a tier once; the watchdog keeps checking during
+    // play, because the probe runs before the player has walked anywhere.
+    if (this.flags.quality === null && this.autoQuality) {
+      const picked = this.probe.sample(real);
+      if (picked) this.setQuality(picked);
+      else if (this.probe.finished) {
+        const drop = this.watchdog.sample(real, this.quality.tier);
+        if (drop) this.setQuality(drop);
+      }
+    }
 
     // The world runs in fixed steps, so a slow frame does not make the breath
     // rhythm or the seed timer run slow with it. The catch-up is capped, so a

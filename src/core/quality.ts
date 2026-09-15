@@ -1,4 +1,4 @@
-import { QUALITY, TIERS } from '../content/chapter1';
+import { QUALITY, TIERS, TIER_ORDER } from '../content/chapter1';
 import type { QualityTier } from '../content/chapter1';
 
 export type { QualityTier };
@@ -8,6 +8,7 @@ export interface QualitySettings {
   pixelRatio: number;
   readonly paintScale: number;
   readonly grassCards: number;
+  readonly grassFade: number;
   readonly particles: number;
   readonly skyStrokes: number;
   readonly treeBlobs: number;
@@ -26,6 +27,17 @@ export function pixelRatioCap(): number {
 
 export function settingsFor(tier: QualityTier): QualitySettings {
   return { tier, pixelRatio: pixelRatioCap(), ...TIERS[tier] };
+}
+
+/** The next tier down, or null when already at the cheapest one. */
+export function tierBelow(tier: QualityTier): QualityTier | null {
+  const i = TIER_ORDER.indexOf(tier);
+  return i > 0 ? (TIER_ORDER[i - 1] ?? null) : null;
+}
+
+/** The frames per second below which a device is judged too slow. */
+export function floorFps(touch = isTouchDevice()): number {
+  return touch ? QUALITY.mobileFloorFps : QUALITY.desktopFloorFps;
 }
 
 /** Picks a tier from an average frame time in milliseconds. */
@@ -63,6 +75,58 @@ export class QualityProbe {
     let tier = tierForFrameTime(median);
     if (isTouchDevice() && tier === 'high') tier = 'medium';
     return tier;
+  }
+}
+
+/**
+ * Watches the real frame rate during play and steps the tier down when the
+ * device cannot keep up.
+ *
+ * The start probe only measures the first second, before the player has walked
+ * anywhere, so a device can still turn out slower than it looked. The watchdog
+ * only ever steps **down**, so it can never oscillate: once it reaches the
+ * cheapest tier it stops. The player can still pick any tier by hand.
+ */
+export class QualityWatchdog {
+  private window = 0;
+  private frames = 0;
+  private cooldown = 0;
+  /** How many times the watchdog has stepped the tier down. */
+  steps = 0;
+
+  constructor(private readonly floor: number = floorFps()) {}
+
+  /** Call once per rendered frame. Returns the tier to drop to, or null. */
+  sample(realSeconds: number, tier: QualityTier): QualityTier | null {
+    if (this.cooldown > 0) {
+      this.cooldown -= realSeconds;
+      if (this.cooldown > 0) return null;
+      this.reset();
+    }
+    this.window += realSeconds;
+    this.frames++;
+    if (this.window < QUALITY.watchdogWindowSeconds) return null;
+
+    const fps = this.frames / this.window;
+    this.reset();
+    if (fps >= this.floor) return null;
+
+    const next = tierBelow(tier);
+    if (next === null) return null;
+    this.steps++;
+    this.cooldown = QUALITY.watchdogCooldownSeconds;
+    return next;
+  }
+
+  /** Starts a fresh measuring window. Used after a manual tier change. */
+  restart(): void {
+    this.reset();
+    this.cooldown = QUALITY.watchdogCooldownSeconds;
+  }
+
+  private reset(): void {
+    this.window = 0;
+    this.frames = 0;
   }
 }
 
