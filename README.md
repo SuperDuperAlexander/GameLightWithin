@@ -18,7 +18,20 @@ npm run build        # production build into dist/
 npm run e2e          # browser tests, writes screenshots/
 ```
 
-Deploy `dist/` to any static host. There is no server and no network call.
+## Put it on a URL
+
+Any static host works. There is no server and no network call.
+
+- **Vercel** — import the repository. `vercel.json` sets the build and the
+  cache headers; nothing else to configure.
+- **Netlify** — import the repository. `netlify.toml` does the same.
+- **Anything else** — run `npm run build` and upload `dist/`. Paths are
+  relative, so it works from a subfolder too.
+
+A real URL is the only way to check the performance budget: 60 fps on a
+mid-range laptop and 30 fps on a mid-range Android phone. Open it with
+`?debug=1` and read the `fps` and `tier` lines in the panel. If the tier drops
+on its own, the watchdog decided the device could not keep up at that tier.
 
 ## Debug
 
