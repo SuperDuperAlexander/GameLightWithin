@@ -16,6 +16,10 @@ export interface Snapshot {
   springs: { id: string; left: number; revealed: boolean }[];
   birdShown: boolean;
   fps: number;
+  px: number;
+  pz: number;
+  yaw: number;
+  breathPhase: string;
   butterflyShown: boolean;
 }
 

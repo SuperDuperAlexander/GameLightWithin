@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { makeRng } from '../core/math';
-import { applyColorRestore } from '../render/colorRestore';
+import { toonMaterial } from '../render/materials';
 import { inGap, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
 
 /** A material every world prop shares, so they all follow the grey-to-colour rule. */
-function propMaterial(color: THREE.ColorRepresentation, flat = true): THREE.Material {
-  return applyColorRestore(new THREE.MeshLambertMaterial({ color, flatShading: flat }));
+function propMaterial(color: THREE.ColorRepresentation, rim = 0.7): THREE.Material {
+  return toonMaterial({ color, rim });
 }
 
 /** A rounded rock. Rocks are soft, never sharp. */
@@ -25,32 +25,55 @@ export function buildRock(radius: number, seed: number): THREE.Mesh {
   return mesh;
 }
 
-/** A stylised tree: a trunk plus clustered soft blobs. */
+/**
+ * A stylised tree: a trunk plus clustered soft blobs.
+ *
+ * Shape matters more than detail here. Trees are the only tall thing in the
+ * valley, so they carry the skyline, and a wood of identical shapes reads as
+ * wallpaper. Each tree picks one of three builds and its own leaf tone.
+ */
 export function buildTree(seed: number, blobCount: number): THREE.Group {
   const rng = makeRng(seed);
   const group = new THREE.Group();
   group.name = 'tree';
 
-  const height = 3.2 + rng() * 2.6;
+  // 0 broad and round, 1 tall and narrow, 2 low and wide.
+  const kind = Math.floor(rng() * 3);
+  const height =
+    kind === 1 ? 5.4 + rng() * 2.4 : kind === 2 ? 2.4 + rng() * 1.1 : 3.4 + rng() * 1.8;
+  const spread = kind === 1 ? 0.55 : kind === 2 ? 1.5 : 1.0;
+
   const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.3, height, 6, 1),
-    propMaterial(0x6e5a48),
+    new THREE.CylinderGeometry(0.14, 0.32, height, 6, 1),
+    propMaterial(0x6b5340),
   );
   trunk.position.y = height / 2;
   trunk.rotation.y = rng() * Math.PI;
+  // A slight lean keeps a row of trees from looking stamped out.
+  trunk.rotation.z = (rng() - 0.5) * 0.12;
   group.add(trunk);
 
   const leafGeo = new THREE.IcosahedronGeometry(1, 1);
-  const leafMat = propMaterial(
-    new THREE.Color(PALETTE.deepGreen).lerp(new THREE.Color(PALETTE.growthGreen), rng()),
-  );
-  for (let i = 0; i < blobCount; i++) {
-    const blob = new THREE.Mesh(leafGeo, leafMat);
-    const r = 0.85 + rng() * 0.75;
-    const a = (i / blobCount) * Math.PI * 2 + rng();
-    const spread = 0.5 + rng() * 1.1;
-    blob.position.set(Math.cos(a) * spread, height + 0.2 + rng() * 1.2, Math.sin(a) * spread);
-    blob.scale.set(r, r * 0.82, r);
+  const deep = new THREE.Color(PALETTE.deepGreen);
+  const bright = new THREE.Color(PALETTE.growthGreen);
+  // Two tones per tree: the lit crown and the shaded underside.
+  const crown = propMaterial(deep.clone().lerp(bright, 0.45 + rng() * 0.5));
+  const under = propMaterial(deep.clone().lerp(bright, 0.1 + rng() * 0.2));
+
+  const count = Math.max(3, blobCount);
+  for (let i = 0; i < count; i++) {
+    const high = i < count * 0.6;
+    const blob = new THREE.Mesh(leafGeo, high ? crown : under);
+    const r = (0.8 + rng() * 0.8) * (kind === 1 ? 0.8 : 1);
+    const a = (i / count) * Math.PI * 2 + rng() * 0.7;
+    const ring = (0.35 + rng() * 0.95) * spread;
+    blob.position.set(
+      Math.cos(a) * ring,
+      height + (high ? 0.45 + rng() * 1.3 : -0.1 + rng() * 0.6),
+      Math.sin(a) * ring,
+    );
+    blob.scale.set(r, r * (0.7 + rng() * 0.3), r);
+    blob.rotation.set(rng(), rng(), rng());
     group.add(blob);
   }
   return group;
@@ -67,7 +90,7 @@ export function buildSpringBasin(): THREE.Group {
   ring.scale.y = 0.75;
   group.add(ring);
 
-  const bowl = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), propMaterial(0x7d7a75, false));
+  const bowl = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), propMaterial(0x7d7a75, 0.35));
   bowl.rotation.x = -Math.PI / 2;
   bowl.position.y = 0.2;
   group.add(bowl);
@@ -96,7 +119,7 @@ export function buildSignStone(): THREE.Group {
 
   // The carved symbol: a ring with a short line beneath it, cut a little proud
   // of the face so the light catches it.
-  const carveMat = propMaterial(0x6f6a63, false);
+  const carveMat = propMaterial(0x6f6a63, 0.35);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.075, 5, 16), carveMat);
   ring.position.set(0, 1.32, 0.18);
   group.add(ring);
@@ -124,7 +147,7 @@ export function buildBridge(): THREE.Group {
 
   const deck = new THREE.Mesh(
     new THREE.BoxGeometry(3.4, 0.36, span, 1, 1, 14),
-    propMaterial(0xa79274, false),
+    propMaterial(0xa79274, 0.35),
   );
   const pos = deck.geometry.getAttribute('position');
   for (let i = 0; i < pos.count; i++) {
@@ -187,10 +210,10 @@ export function scatterProps(treeBlobs: number): ScatterResult {
   ];
 
   const treeGeoCache: THREE.Group[] = [];
-  for (let i = 0; i < 8; i++) treeGeoCache.push(buildTree(300 + i, treeBlobs));
+  for (let i = 0; i < 14; i++) treeGeoCache.push(buildTree(300 + i, treeBlobs));
 
   let placed = 0;
-  for (let i = 0; i < 1400 && placed < 210; i++) {
+  for (let i = 0; i < 2600 && placed < 320; i++) {
     const z = WORLD.lengthEnd + rng() * (WORLD.lengthStart - WORLD.lengthEnd);
     const half = valleyHalfWidth(z);
     const side = rng() < 0.5 ? -1 : 1;

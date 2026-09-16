@@ -400,13 +400,15 @@ export class Chapter1 {
   // ---------- actions ----------
 
   private onPush(): void {
-    if (this.scene !== 4 || !this.transform.pushAvailable) return;
+    // Never gated on the scene number: the push belongs to the fog, and the
+    // fog is wherever the player finds it.
+    if (!this.transform.pushAvailable) return;
     this.transform.push();
     this.game.camera.addShake(0.5);
   }
 
   private onInteract(): void {
-    if (this.scene !== 5 || this.manifest.state !== 'none') return;
+    if (this.manifest.state !== 'none') return;
     const p = this.game.world.playerPosition;
     if (dist2d(p.x, p.z, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) > 4) return;
     this.panels.seedChoice(
@@ -528,55 +530,61 @@ export class Chapter1 {
     return this.autoHeld;
   }
 
+  /**
+   * Runs every mechanic, every frame, wherever the player is standing.
+   *
+   * The scene number only records how far the player has come. It must never
+   * gate a system: the valley is one open place, and the only real barrier in
+   * it is the gap in the ground. Gating the fog behind "scene 4" meant a player
+   * who walked past the hidden second spring found a fog that did nothing at
+   * all, and with it no transform, no seed and no bridge.
+   */
   private runScene(dt: number, px: number, pz: number): void {
-    switch (this.scene) {
-      case 1:
-      case 2: {
-        const spring1 = this.receive.get('spring1');
-        if (spring1?.empty) this.advanceTo(3);
-        break;
-      }
-      case 3: {
-        const spring2 = this.receive.get('spring2');
-        this.hints.updateScene3(dt, spring2?.revealed ?? false);
-        if (spring2?.revealed && !this.hints.birdShown) {
-          this.checks.set('stoppedWithoutHint', true);
-        }
-        if (spring2?.empty) this.advanceTo(4);
-        break;
-      }
-      case 4: {
-        this.transform.update(dt, px, pz);
-        if (this.transform.done && this.transform.dissolveTime >= TRANSFORM.dissolveSeconds) {
-          this.advanceTo(5);
-        }
-        break;
-      }
-      case 5: {
-        this.manifest.update(dt, px, pz);
-        this.hints.updateScene5(dt, px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z);
-        if (this.manifest.hasBeenAway && !this.hints.butterflyShown) {
-          this.checks.set('walkedAwayFromSeed', true);
-        }
-        if (this.manifest.state === 'complete') {
-          this.game.world.setBridgeRise(
-            clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds),
-          );
-          if (this.manifest.riseTime >= MANIFEST.bridgeRiseSeconds) this.advanceTo(6);
-        }
-        break;
-      }
-      case 6: {
-        this.thanks.update(dt);
-        if (this.thanks.complete && this.game.world.color.globalColor >= 0.999)
-          this.finishChapter();
-        break;
-      }
+    this.transform.update(dt, px, pz);
+    this.manifest.update(dt, px, pz);
+    this.thanks.update(dt);
+
+    const spring2 = this.receive.get('spring2');
+    this.hints.updateScene3(dt, spring2?.revealed ?? false);
+    if (spring2?.revealed && !this.hints.birdShown) {
+      this.checks.set('stoppedWithoutHint', true);
     }
 
-    // Scene 5's third spring and scene 4's fog keep running once reached.
-    if (this.scene >= 4) this.transform.update(dt, px, pz);
-    if (this.scene >= 5 && this.manifest.state === 'growing') this.manifest.update(dt, px, pz);
+    this.hints.updateScene5(dt, px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z);
+    if (this.manifest.hasBeenAway && !this.hints.butterflyShown) {
+      this.checks.set('walkedAwayFromSeed', true);
+    }
+
+    if (this.manifest.state === 'complete') {
+      this.game.world.setBridgeRise(clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds));
+    }
+
+    this.updateProgress();
+
+    if (this.thanks.complete && this.game.world.color.globalColor >= 0.999) {
+      this.finishChapter();
+    }
+  }
+
+  /**
+   * Works out how far the player has come and records it. The player may do
+   * the parts out of order, so this only ever moves forward.
+   */
+  private updateProgress(): void {
+    let reached: SceneId = 1;
+    if (this.wakeBreaths >= WAKE_BREATHS) reached = 2;
+    if (this.receive.get('spring1')?.empty) reached = 3;
+    if (this.receive.get('spring2')?.empty) reached = 4;
+    if (this.transform.done && this.transform.dissolveTime >= TRANSFORM.dissolveSeconds) {
+      reached = 5;
+    }
+    if (
+      this.manifest.state === 'complete' &&
+      this.manifest.riseTime >= MANIFEST.bridgeRiseSeconds
+    ) {
+      reached = 6;
+    }
+    if (reached > this.scene) this.advanceTo(reached);
   }
 
   private updateHud(dt: number, px: number, pz: number): void {
@@ -610,13 +618,9 @@ export class Chapter1 {
     this.fogVolume.group.position.x = this.transform.x;
     this.fogVolume.group.position.z = this.transform.z;
 
-    this.hud.setPushVisible(
-      this.scene === 4 && this.transform.pushAvailable && !this.transform.done,
-    );
+    this.hud.setPushVisible(this.transform.pushAvailable && !this.transform.done);
     this.hud.setInteractVisible(
-      this.scene === 5 &&
-        this.manifest.state === 'none' &&
-        dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
+      this.manifest.state === 'none' && dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
     );
 
     // Spring glows: bright while they still hold light, gentle once empty.
@@ -663,7 +667,6 @@ export class Chapter1 {
   private currentHint(px: number, pz: number): string | null {
     if (this.phase !== 'playing') return null;
     if (
-      this.scene === 5 &&
       this.manifest.state === 'none' &&
       dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4
     ) {
@@ -705,6 +708,9 @@ export class Chapter1 {
       breathsCalm: this.breathsCalm,
       wakeBreaths: this.wakeBreaths,
       speed: Number(this.game.speed.toFixed(3)),
+      px: Number(this.game.world.playerPosition.x.toFixed(3)),
+      pz: Number(this.game.world.playerPosition.z.toFixed(3)),
+      yaw: Number(this.game.camera.yaw.toFixed(4)),
       autoHeld: this.autoHeld,
       autoClock: Number(this.autoClock.toFixed(2)),
       preset: this.breath.getPreset().id,

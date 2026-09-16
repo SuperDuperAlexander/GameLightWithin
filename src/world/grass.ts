@@ -3,7 +3,7 @@ import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { makeRng } from '../core/math';
 import { colorUniforms } from '../render/colorRestore';
-import { inGap, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
+import { inGap, pathAmount, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
 
 /**
  * Grass and flowers as camera-facing cards with a brush-stroke alpha made in
@@ -29,14 +29,18 @@ export function buildGrass(count: number): THREE.Mesh {
     const x = pathCenterX(z) + (rng() * 2 - 1) * half * 1.15;
     if (Math.abs(x) > WORLD.halfWidth - 2) continue;
     if (inGap(x, z)) continue;
+    // The walked track is bare earth, so no grass grows on it.
+    if (pathAmount(x, z) > 0.35) continue;
     const y = terrainHeight(x, z);
     offsets[placed * 3] = x;
     offsets[placed * 3 + 1] = y;
     offsets[placed * 3 + 2] = z;
     // width, height, kind (0 grass, 1 flower), phase
     const flower = rng() < 0.13 ? 1 : 0;
-    params[placed * 4] = flower ? 0.13 + rng() * 0.08 : 0.09 + rng() * 0.09;
-    params[placed * 4 + 1] = flower ? 0.3 + rng() * 0.2 : 0.34 + rng() * 0.46;
+    params[placed * 4] = flower ? 0.13 + rng() * 0.08 : 0.08 + rng() * 0.1;
+    // A wide spread of heights reads as a real meadow rather than a mown lawn.
+    const tall = rng() < 0.22 ? 1.7 : 1;
+    params[placed * 4 + 1] = flower ? 0.32 + rng() * 0.22 : (0.34 + rng() * 0.5) * tall;
     params[placed * 4 + 2] = flower;
     params[placed * 4 + 3] = rng() * Math.PI * 2;
     placed++;

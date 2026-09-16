@@ -3,7 +3,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
-import { applyColorRestore } from '../render/colorRestore';
+import { toonMaterial } from '../render/materials';
 
 // three-mesh-bvh drives both the ground checks and the prop collision.
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -25,6 +25,62 @@ export function valleyHalfWidth(z: number): number {
   // Scene 5 has a side path out to the third spring.
   w += 13 * Math.exp(-Math.pow((z + 79) / 9, 2));
   return Math.max(6, w);
+}
+
+/** Shortest distance from a point to a line between two points, on the floor. */
+function distToSegment(
+  x: number,
+  z: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len2 = dx * dx + dz * dz || 1;
+  const t = clamp01(((x - ax) * dx + (z - az) * dz) / len2);
+  return Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+}
+
+/**
+ * How much of a walked track there is at this point, 0 none to 1 bare earth.
+ *
+ * The brief says a path leads to the dry spring. Without one the valley is an
+ * even meadow and the player has nothing to follow. The track is drawn into
+ * the terrain's vertex colours and it keeps the grass off itself, so it costs
+ * no extra geometry. There is deliberately **no** track to the second spring:
+ * that one is meant to be found by stopping, not by following.
+ */
+export function pathAmount(x: number, z: number): number {
+  let best = Infinity;
+
+  // The main track runs the length of the valley and stops at the gap.
+  if (z < WORLD.lengthStart + 6 && z > LAYOUT.gap.z1 - 1) {
+    // Follow the wandering centre line in short straight pieces.
+    const step = 4;
+    const zi = Math.floor(z / step) * step;
+    for (const z0 of [zi - step, zi, zi + step]) {
+      const z1 = z0 + step;
+      best = Math.min(best, distToSegment(x, z, pathCenterX(z0), z0, pathCenterX(z1), z1));
+    }
+  }
+
+  // A short branch off to the dry spring and its sign stone.
+  best = Math.min(
+    best,
+    distToSegment(x, z, pathCenterX(-24), -24, LAYOUT.spring1.x, LAYOUT.spring1.z + 1.5),
+  );
+
+  // The side path out to the third spring, which the seed needs.
+  best = Math.min(
+    best,
+    distToSegment(x, z, pathCenterX(-79), -79, LAYOUT.spring3.x - 2, LAYOUT.spring3.z),
+  );
+
+  // Soft, uneven edges, so it reads as trodden rather than drawn.
+  const wobble = fbm2d(x * 0.25, z * 0.25, 2, 31) * 0.9;
+  return 1 - smoothstep(1.0 + wobble, 2.3 + wobble, best);
 }
 
 /** True inside the gap that stops the path in scene 5. */
@@ -125,6 +181,9 @@ export function buildTerrain(): TerrainResult {
   const green = new THREE.Color(PALETTE.growthGreen);
   const deep = new THREE.Color(PALETTE.deepGreen);
   const violet = new THREE.Color(PALETTE.farHillsViolet);
+  const earth = new THREE.Color(0xa08a68);
+  const meadow = new THREE.Color(PALETTE.growthGreen).lerp(new THREE.Color(0xd6e07a), 0.4);
+  const straw = new THREE.Color(0xc9b478);
   const tmp = new THREE.Color();
 
   for (let iz = 0; iz <= segZ; iz++) {
@@ -136,11 +195,25 @@ export function buildTerrain(): TerrainResult {
 
       // Light is baked into the vertex colours instead of a shadow map.
       const slope = terrainHeight(x + 1, z) - y;
-      const shade = clamp(0.54 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.32, 0.42, 1);
+      const shade = clamp(0.56 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.3, 0.46, 1);
       const height01 = clamp01((y + 2) / 16);
       tmp.copy(deep).lerp(green, clamp01(1.15 - height01 * 1.4));
       tmp.lerp(violet, clamp01((height01 - 0.45) * 1.6));
-      tmp.multiplyScalar(shade);
+
+      // Patches. A single flat green reads as a plane no matter how it is lit,
+      // so the ground carries broad drifts of lighter and drier growth on top
+      // of finer mottling. This is the cheapest way to make ground look like
+      // ground: it costs nothing at run time, only vertex colours.
+      const drift = fbm2d(x * 0.035 + 11, z * 0.035 + 7, 3, 43);
+      tmp.lerp(meadow, clamp01((drift - 0.42) * 1.9));
+      const dry = fbm2d(x * 0.021 + 61, z * 0.021 + 29, 2, 77);
+      tmp.lerp(straw, clamp01((dry - 0.58) * 1.7) * 0.75);
+      const mottle = 0.9 + fbm2d(x * 0.55, z * 0.55, 2, 91) * 0.22;
+
+      tmp.multiplyScalar(shade * mottle);
+      // The walked track shows the earth under the grass.
+      const track = pathAmount(x, z);
+      if (track > 0) tmp.lerp(earth, track * 0.85);
       colors.push(tmp.r, tmp.g, tmp.b);
     }
   }
@@ -166,9 +239,9 @@ export function buildTerrain(): TerrainResult {
   geo.computeVertexNormals();
   geo.computeBoundsTree();
 
-  const material = applyColorRestore(
-    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: false }),
-  );
+  // A low rim on the ground: enough to catch the hill edges against the sky,
+  // not so much that the whole meadow glows.
+  const material = toonMaterial({ vertexColors: true, rim: 0.3 });
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = 'terrain';
   mesh.matrixAutoUpdate = false;
@@ -195,9 +268,7 @@ function buildChasm(): THREE.Group {
 
   // Everything down here sits in shadow, so the colours stay very dark.
   const rock = new THREE.Color(PALETTE.blockage).multiplyScalar(0.12);
-  const wallMat = applyColorRestore(
-    new THREE.MeshLambertMaterial({ color: rock, flatShading: true }),
-  );
+  const wallMat = toonMaterial({ color: rock, rim: 0.1 });
 
   const floorGeo = new THREE.PlaneGeometry(width + 2, depth + 2, 6, 6);
   floorGeo.rotateX(-Math.PI / 2);

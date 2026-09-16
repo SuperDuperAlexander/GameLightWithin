@@ -24,7 +24,19 @@ export class Hud {
     onPush: () => void,
     onInteract: () => void,
   ) {
-    if (isTouchDevice()) document.body.classList.add('lw-touch');
+    // A laptop with a touchscreen reports touch points but is played with a
+    // keyboard, so showing the joystick straight away just clutters the view.
+    // The touch controls appear the first time a finger is actually used.
+    if (isTouchDevice() && !matchMedia('(any-hover: hover)').matches) {
+      document.body.classList.add('lw-touch');
+    }
+    window.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.pointerType === 'touch') document.body.classList.add('lw-touch');
+      },
+      { capture: true },
+    );
 
     this.hint = el('div', { class: 'lw-hint', role: 'status', 'aria-live': 'polite' });
     this.fogText = el('div', { class: 'lw-fog-text', 'aria-hidden': 'true' });

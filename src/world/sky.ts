@@ -64,10 +64,13 @@ export function buildSky(strokes: number): THREE.Mesh {
 
         // Soft cloud strokes. Strokes are stretched sideways like brush marks.
         vec2 p = vec2(atan(vDir.z, vDir.x) * 1.6, vDir.y * 3.4);
-        float clouds = fbm(p * vec2(1.0, 2.6) + vec2(uTime * 0.006, 0.0));
-        clouds = smoothstep(0.55, 0.92, clouds) * smoothstep(0.02, 0.45, h) * (uStrokes / 12.0 * 0.5 + 0.3);
-        vec3 cloudCol = mix(vec3(0.78), mix(vec3(0.92), uSun, 0.35), uGlobalColor);
-        sky = mix(sky, cloudCol, clouds * 0.45);
+        // Two layers: broad banks that drift, and finer strokes on top of them.
+        float bank = fbm(p * vec2(0.55, 1.5) + vec2(uTime * 0.004, 0.0));
+        float detail = fbm(p * vec2(1.6, 3.2) + vec2(uTime * 0.011, 0.0));
+        float clouds = bank * 0.65 + detail * 0.35;
+        clouds = smoothstep(0.44, 0.78, clouds) * smoothstep(0.0, 0.35, h) * (uStrokes / 12.0 * 0.6 + 0.5);
+        vec3 cloudCol = mix(vec3(0.84), mix(vec3(1.0), uSun, 0.28), uGlobalColor);
+        sky = mix(sky, cloudCol, clouds * 0.66);
 
         // One soft sun, warmer as colour returns.
         vec3 sunDir = normalize(vec3(0.45, 0.42, -0.79));

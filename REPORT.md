@@ -171,7 +171,7 @@ low-tier pictures described in section 5.
 
 ### Unit tests, Vitest
 
-**81 passed, 0 failed**, in 7 files.
+**86 passed, 0 failed**, in 8 files.
 
 | File                | Tests | What it covers                                                                                                                                                                                 |
 | ------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +184,7 @@ low-tier pictures described in section 5.
 
 ### Browser tests, Playwright
 
-**46 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
+**62 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
 390 x 844.
 
 | Spec                    | Per project | What it covers                                                                                                                                                                                                                                       |
@@ -319,6 +319,47 @@ Device pixel ratio is capped at 1.5 on touch devices and 2 elsewhere.
     It reads as light returning, which suits the chapter, and it is tested.
 
 ---
+
+## 5b. What the first real play test found
+
+The automated run played the whole chapter and passed. A person played it and
+almost nothing worked. Both were true, and the gap between them is the most
+useful thing to come out of this project so far.
+
+1. **Every mechanic except breathing was gated behind a scene counter, and the
+   counter was gated behind the _hidden_ spring.**
+   `runScene` ran the fog only in scene 4, the seed only in scene 5 and the
+   thanks only in scene 6. The scene number moved from 3 to 4 only when the
+   second spring was emptied, and that spring is invisible until the player
+   takes two calm breaths within 6 m of it, in a wide field, with no cue for
+   the first two minutes. A player who walked past it reached a fog that did
+   nothing at all, and behind that fog no seed, no bridge and no ending.
+   The valley is one open place with one real barrier in it, the gap in the
+   ground. Nothing else should ever have been gated. Every system now runs
+   every frame, wherever the player is standing, and the scene number only
+   records how far they have come. Two browser tests cover it: one walks
+   straight past the hidden spring and dissolves the fog anyway, one plants the
+   seed while nominally still in scene 2.
+
+2. **There was no path.** The brief says "a path leads to a dry spring". The
+   valley had a walkable corridor but nothing to see, so the player stood in an
+   even grey meadow with no reason to go one way rather than another. There is
+   now a walked track down the valley, with a branch to the dry spring and the
+   side path out to the third spring. It is painted into the terrain's vertex
+   colours and keeps the grass off itself, so it costs no geometry. There is
+   deliberately no track to the hidden spring; that one is still found by
+   stopping.
+
+3. **A and D were swapped.** The camera's right vector was the negative of
+   `forward` crossed with up, so pressing right walked left. The browser tests
+   never caught it because they steered the player with a world-space helper
+   that skips the camera-relative step entirely. There is now a spec that
+   presses the real keys, and a unit test on the camera basis; both fail on the
+   old code.
+
+4. **The touch controls showed on a laptop.** The joystick and the big breath
+   button appeared on any device reporting touch points, which includes a
+   laptop with a touchscreen. They now wait for a finger to actually be used.
 
 ## 6. Known problems, worst first
 

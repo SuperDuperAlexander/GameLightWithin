@@ -31,6 +31,8 @@ export const colorUniforms = {
   uGreyTint: { value: new THREE.Color(PALETTE.startGrey) },
   /** How much darker the grey side is than the restored one. */
   uGreyDim: { value: 0.8 },
+  /** The colour of the rim light. It warms as the valley returns to colour. */
+  uRimColor: { value: new THREE.Color(PALETTE.skyGrey) },
 };
 
 const VERT_HEAD = /* glsl */ `
@@ -43,6 +45,8 @@ vLwWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
 
 const FRAG_HEAD = /* glsl */ `
 varying vec3 vLwWorld;
+uniform float uRimStrength;
+uniform vec3 uRimColor;
 uniform vec4 uZones[${COLOR.maxZones}];
 uniform int uZoneCount;
 uniform float uGlobalColor;
@@ -83,16 +87,38 @@ const FRAG_BODY = /* glsl */ `
 `;
 
 /**
- * Makes a material take part in the grey-to-colour system.
- * Call this on every world material.
+ * A rim light, added after the surface has been lit.
+ *
+ * It is what separates a shape from what is behind it. Without it an untextured
+ * world reads as flat blocks; with it every hill, tree and rock keeps a clear
+ * edge against the sky.
  */
-export function applyColorRestore(material: THREE.Material): THREE.Material {
+const FRAG_RIM = /* glsl */ `
+{
+  vec3 lwN = normalize(normal);
+  vec3 lwV = normalize(vViewPosition);
+  float lwRim = 1.0 - clamp(dot(lwN, lwV), 0.0, 1.0);
+  lwRim = pow(lwRim, 2.6) * uRimStrength;
+  // Brighter where the surface also faces up, so the light reads as coming
+  // from the sky rather than from the camera.
+  lwRim *= 0.45 + 0.55 * clamp(lwN.y * 0.5 + 0.5, 0.0, 1.0);
+  gl_FragColor.rgb += uRimColor * lwRim;
+}
+`;
+
+/**
+ * Makes a material take part in the grey-to-colour system, and gives it a rim
+ * light. Call this on every world material.
+ */
+export function applyColorRestore(material: THREE.Material, rim = 0): THREE.Material {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uZones = colorUniforms.uZones;
     shader.uniforms.uZoneCount = colorUniforms.uZoneCount;
     shader.uniforms.uGlobalColor = colorUniforms.uGlobalColor;
     shader.uniforms.uGreyTint = colorUniforms.uGreyTint;
     shader.uniforms.uGreyDim = colorUniforms.uGreyDim;
+    shader.uniforms.uRimColor = colorUniforms.uRimColor;
+    shader.uniforms.uRimStrength = { value: rim };
 
     shader.vertexShader =
       VERT_HEAD +
@@ -100,15 +126,22 @@ export function applyColorRestore(material: THREE.Material): THREE.Material {
         '#include <begin_vertex>',
         '#include <begin_vertex>\n' + VERT_BODY,
       );
-    shader.fragmentShader =
+
+    let frag =
       FRAG_HEAD +
       shader.fragmentShader.replace(
         '#include <color_fragment>',
         '#include <color_fragment>\n' + FRAG_BODY,
       );
+    // The rim goes on after the lighting but before the distance haze, so a
+    // far-off hill cannot rim-light its way back out of the mist.
+    if (rim > 0 && frag.includes('#include <fog_fragment>')) {
+      frag = frag.replace('#include <fog_fragment>', FRAG_RIM + '\n#include <fog_fragment>');
+    }
+    shader.fragmentShader = frag;
   };
   // Materials with the same program must not be shared with untouched ones.
-  material.customProgramCacheKey = () => 'lw-color-restore';
+  material.customProgramCacheKey = () => `lw-color-restore-${rim > 0 ? 'rim' : 'flat'}`;
   return material;
 }
 

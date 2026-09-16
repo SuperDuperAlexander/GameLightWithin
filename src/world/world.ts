@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LAYOUT, PLAYER, TIERS } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import type { QualitySettings } from '../core/quality';
-import { ColorRestoreState } from '../render/colorRestore';
+import { ColorRestoreState, colorUniforms } from '../render/colorRestore';
 import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
 import { PlayerFigure } from './player';
@@ -11,6 +11,12 @@ import { buildSky, updateSky } from './sky';
 import { buildTerrain, terrainHeight } from './terrain';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
+const COLD_RIM = new THREE.Color(PALETTE.skyGrey);
+const WARM_RIM = new THREE.Color(PALETTE.warmSky);
+const HAZE_WARM = new THREE.Color(PALETTE.farHillsViolet).lerp(
+  new THREE.Color(PALETTE.warmSky),
+  0.55,
+);
 
 /**
  * Builds and holds the valley: terrain, sky, props, grass, the player figure
@@ -28,9 +34,10 @@ export class World {
   private readonly terrainMesh: THREE.Mesh;
   private readonly bridgeDeck: THREE.Mesh;
   /** The bridge's own colours, kept so the golden blend stays reversible. */
-  private readonly bridgeColors: { material: THREE.MeshLambertMaterial; base: THREE.Color }[] = [];
+  private readonly bridgeColors: { material: THREE.MeshToonMaterial; base: THREE.Color }[] = [];
   private bridgeGold = -1;
   private clock = 0;
+  private readonly haze: THREE.Fog;
 
   constructor(quality: QualitySettings) {
     const terrain = buildTerrain();
@@ -97,7 +104,7 @@ export class World {
     this.scene.add(this.bridge);
     this.bridgeDeck = this.bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
     this.bridge.traverse((o) => {
-      const material = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
+      const material = (o as THREE.Mesh).material as THREE.MeshToonMaterial | undefined;
       if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
         this.bridgeColors.push({ material, base: material.color.clone() });
       }
@@ -105,9 +112,11 @@ export class World {
 
     this.scene.add(this.player.group);
 
-    // Distance haze. It thickens at the valley borders so they turn the player
-    // back softly instead of stopping them at a wall.
-    this.scene.fog = new THREE.Fog(new THREE.Color(PALETTE.skyGrey), 55, 210);
+    // Aerial perspective. Distant ground fades into the sky, which is what
+    // gives an open valley its depth. The colour follows the sky as the valley
+    // returns to colour, so the haze never stays a cold grey over warm hills.
+    this.haze = new THREE.Fog(new THREE.Color(PALETTE.skyGrey), 38, 185);
+    this.scene.fog = this.haze;
   }
 
   /**
@@ -154,6 +163,12 @@ export class World {
   ): void {
     this.clock += dt;
     this.color.update(dt);
+    // The rim light warms with the valley, so the edges pick up the returning
+    // sun instead of staying a cold grey all the way to the end.
+    (colorUniforms.uRimColor.value as THREE.Color)
+      .copy(COLD_RIM)
+      .lerp(WARM_RIM, this.color.globalColor);
+    this.haze.color.copy(COLD_RIM).lerp(HAZE_WARM, this.color.globalColor);
     updateSky(this.sky, this.clock);
     updateGrass(this.grass, this.clock, windStrength, windRadius, fogX, fogZ);
     this.player.setGlow(calm);
