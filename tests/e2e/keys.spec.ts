@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { snap } from './helpers';
+import { snap, waitForSnap } from './helpers';
 
 test('space and shift make a breath, and the stride opens up', async ({ page }) => {
   test.setTimeout(240_000);
@@ -17,14 +17,16 @@ test('space and shift make a breath, and the stride opens up', async ({ page }) 
   });
   await page.goto('/?scene=1&debug=1&quality=low&nopaint=1');
   await page.waitForFunction(() => document.body.dataset.ready === '1');
-  await page.waitForTimeout(1500);
+  // Wait for the renderer to actually be running before timing anything.
+  await waitForSnap(page, (s) => s.fps > 0, 'the first frames', 90_000);
+  await page.waitForTimeout(1200);
 
   // The player can walk straight away, but slowly.
   const a = await snap(page);
   await page.keyboard.down('KeyW');
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2500);
   await page.keyboard.up('KeyW');
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
   const b = await snap(page);
   const slow = Math.abs(b.pz - a.pz);
   expect(slow, 'the player is never held still').toBeGreaterThan(0.5);
@@ -47,9 +49,9 @@ test('space and shift make a breath, and the stride opens up', async ({ page }) 
   await page.waitForTimeout(3000);
   const d = await snap(page);
   await page.keyboard.down('KeyW');
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2500);
   await page.keyboard.up('KeyW');
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
   const e = await snap(page);
   const fast = Math.abs(e.pz - d.pz);
   expect(

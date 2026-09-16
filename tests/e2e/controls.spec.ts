@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { call, snap } from './helpers';
+import { call, snap, waitForSnap } from './helpers';
 
 /**
  * Walking with the real keys.
@@ -17,16 +17,25 @@ test.describe('walking with the keyboard', () => {
   async function press(page: Page, key: string): Promise<{ dx: number; dz: number }> {
     const before = await snap(page);
     await page.keyboard.down(key);
-    await page.waitForTimeout(1200);
+    // Long enough to be unambiguous even at a few frames a second.
+    await page.waitForTimeout(2000);
     await page.keyboard.up(key);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
     const after = await snap(page);
-    return { dx: after.px - before.px, dz: after.pz - before.pz };
+    const moved = { dx: after.px - before.px, dz: after.pz - before.pz };
+    // eslint-disable-next-line no-console
+    console.log(`MOVE ${key} dx=${moved.dx.toFixed(2)} dz=${moved.dz.toFixed(2)}`);
+    return moved;
   }
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/?scene=3&quality=low&nopaint=1');
     await page.waitForFunction(() => document.body.dataset.ready === '1');
+    // Wait for the renderer to actually be running. The first frames compile
+    // shaders and build the environment map, which on a machine with no
+    // graphics card takes seconds. A fixed pause raced that and made these
+    // tests read a player who had not moved yet because time had not moved.
+    await waitForSnap(page, (s) => s.fps > 0, 'the first frames', 90_000);
     // Face straight down the valley, which runs toward negative z.
     await call(page, 'lookAt', Math.PI, 0.12);
     await page.waitForTimeout(1200);
@@ -60,11 +69,13 @@ test.describe('walking with the keyboard', () => {
   });
 
   test('walking resets the breath in progress', async ({ page }) => {
+    // Each wait has to cover several frames, and a machine with no graphics
+    // card runs this at a couple of frames a second.
     await page.keyboard.down('Space');
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(2000);
     expect((await snap(page)).breathPhase).toBe('inhale');
     await page.keyboard.down('KeyW');
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(2000);
     expect((await snap(page)).breathPhase).toBe('idle');
     await page.keyboard.up('KeyW');
     await page.keyboard.up('Space');

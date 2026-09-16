@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PALETTE } from '../content/palette';
 import { clamp01, makeRng } from '../core/math';
-import { toonMaterial } from '../render/materials';
+import { worldMaterial } from '../render/materials';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
 
@@ -347,7 +347,7 @@ export class Sprout {
   constructor() {
     this.stem = new THREE.Mesh(
       new THREE.ConeGeometry(0.2, 1.05, 6),
-      toonMaterial({ color: PALETTE.growthGreen, rim: 0.8 }),
+      worldMaterial({ color: PALETTE.growthGreen, rim: 0.3 }),
     );
     this.stem.position.y = 0.52;
     this.glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), makeMoteMaterial(GOLD));
@@ -376,7 +376,7 @@ export class Sprout {
 /** The bird hint in scene 3. It lands near the hidden spring and sits still. */
 export function buildBird(): THREE.Group {
   const group = new THREE.Group();
-  const mat = toonMaterial({ color: 0xbfb3a4, rim: 0.9 });
+  const mat = worldMaterial({ color: 0xbfb3a4, rim: 0.3 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat);
   body.scale.set(1, 0.9, 1.35);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), mat);

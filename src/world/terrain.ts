@@ -3,7 +3,7 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
-import { toonMaterial } from '../render/materials';
+import { worldMaterial } from '../render/materials';
 
 // three-mesh-bvh drives both the ground checks and the prop collision.
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -241,7 +241,7 @@ export function buildTerrain(): TerrainResult {
 
   // A low rim on the ground: enough to catch the hill edges against the sky,
   // not so much that the whole meadow glows.
-  const material = toonMaterial({ vertexColors: true, rim: 0.3 });
+  const material = worldMaterial({ vertexColors: true, rim: 0.07 });
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = 'terrain';
   mesh.matrixAutoUpdate = false;
@@ -268,7 +268,7 @@ function buildChasm(): THREE.Group {
 
   // Everything down here sits in shadow, so the colours stay very dark.
   const rock = new THREE.Color(PALETTE.blockage).multiplyScalar(0.12);
-  const wallMat = toonMaterial({ color: rock, rim: 0.1 });
+  const wallMat = worldMaterial({ color: rock, rim: 0.02 });
 
   const floorGeo = new THREE.PlaneGeometry(width + 2, depth + 2, 6, 6);
   floorGeo.rotateX(-Math.PI / 2);

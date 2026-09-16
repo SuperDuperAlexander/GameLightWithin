@@ -88,6 +88,7 @@ const PaperShader = {
     uTime: { value: 0 },
     uGrain: { value: 0.035 },
     uVignette: { value: 0.34 },
+    uExposure: { value: 0.85 },
     /** 0 normal, 1 fully darkened. Used when the player stands inside the fog. */
     uDarken: { value: 0 },
     uResolution: { value: new THREE.Vector2(1280, 720) },
@@ -100,6 +101,7 @@ const PaperShader = {
     uniform float uTime;
     uniform float uGrain;
     uniform float uVignette;
+    uniform float uExposure;
     uniform float uDarken;
     uniform vec2 uResolution;
 
@@ -107,8 +109,15 @@ const PaperShader = {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
     }
 
-    // This pass writes straight to the canvas with a raw shader, so it has to
-    // do the linear to sRGB conversion that the built-in materials do for us.
+    // Tone mapping, then the linear to sRGB conversion. Both belong here
+    // rather than in the materials: the sky, the grass and the pollen are raw
+    // shaders that would otherwise be left out and drift away from everything
+    // else. ACES keeps highlights from clipping to flat white.
+    vec3 aces(vec3 x) {
+      const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+      return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+    }
+
     vec3 toSRGB(vec3 c) {
       c = clamp(c, 0.0, 1.0);
       return mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308)));
@@ -118,7 +127,7 @@ const PaperShader = {
       vec3 col = texture2D(tDiffuse, vUv).rgb;
 
       // Everything above this point is in linear light.
-      col = toSRGB(col);
+      col = toSRGB(aces(col * uExposure));
 
       // Paper grain: a fixed fibre pattern plus a very slow drift, so the
       // picture looks like paint on paper and never like video noise.

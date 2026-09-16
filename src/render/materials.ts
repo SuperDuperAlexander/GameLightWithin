@@ -4,51 +4,47 @@ import { applyColorRestore } from './colorRestore';
 /**
  * The shading model for the whole world.
  *
- * Light is banded into a few steps rather than blended smoothly, and every
- * surface carries a rim light. That is what gives the world clean, readable
- * shapes instead of soft mush, and it is what most reads as a stylised outdoor
- * game rather than an untextured 3D scene.
+ * Surfaces are lit properly: a directional sun with a real shadow, plus an
+ * environment map generated from the game's own sky, which is what fills the
+ * shadowed side of everything with sky light instead of a flat ambient guess.
+ * On top of that every surface carries a rim light so its shape reads against
+ * whatever is behind it.
+ *
+ * Nothing here is metal and everything is rough. This is a valley of grass,
+ * bark and stone.
  */
 
-/** Four light steps: deep shade, shade, light, highlight. */
-function buildGradientMap(): THREE.DataTexture {
-  const steps = new Uint8Array([72, 138, 205, 255]);
-  const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
-  tex.minFilter = THREE.NearestFilter;
-  tex.magFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-let gradient: THREE.DataTexture | null = null;
-
-export function toonGradient(): THREE.DataTexture {
-  gradient ??= buildGradientMap();
-  return gradient;
-}
-
-export interface ToonOptions {
+export interface WorldMaterialOptions {
   color?: THREE.ColorRepresentation;
   vertexColors?: boolean;
   /** How strong the rim light is on this surface, 0 to about 1.5. */
   rim?: number;
-  transparent?: boolean;
+  roughness?: number;
+  /** Surface relief. Shared across the world so it tiles consistently. */
+  normalMap?: THREE.Texture | null;
+  normalScale?: number;
+  flatShading?: boolean;
   side?: THREE.Side;
 }
 
 /**
- * A world material: banded toon light, a rim light, and the shared
- * grey-to-colour chunk.
+ * A world material: physically based, rim lit, and taking part in the
+ * grey-to-colour system.
  */
-export function toonMaterial(options: ToonOptions = {}): THREE.MeshToonMaterial {
-  const material = new THREE.MeshToonMaterial({
+export function worldMaterial(options: WorldMaterialOptions = {}): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
     color: options.color ?? 0xffffff,
-    gradientMap: toonGradient(),
     vertexColors: options.vertexColors ?? false,
-    transparent: options.transparent ?? false,
+    roughness: options.roughness ?? 0.94,
+    metalness: 0,
+    flatShading: options.flatShading ?? false,
     side: options.side ?? THREE.FrontSide,
   });
+  if (options.normalMap) {
+    material.normalMap = options.normalMap;
+    const s = options.normalScale ?? 0.6;
+    material.normalScale = new THREE.Vector2(s, s);
+  }
   applyColorRestore(material, options.rim ?? 0.55);
   return material;
 }

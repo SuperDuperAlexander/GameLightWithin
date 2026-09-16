@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { makeRng } from '../core/math';
-import { toonMaterial } from '../render/materials';
+import { worldMaterial } from '../render/materials';
 import { inGap, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
 
 /** A material every world prop shares, so they all follow the grey-to-colour rule. */
-function propMaterial(color: THREE.ColorRepresentation, rim = 0.7): THREE.Material {
-  return toonMaterial({ color, rim });
+function propMaterial(color: THREE.ColorRepresentation, rim = 0.22): THREE.Material {
+  return worldMaterial({ color, rim });
 }
 
 /** A rounded rock. Rocks are soft, never sharp. */
@@ -90,7 +90,7 @@ export function buildSpringBasin(): THREE.Group {
   ring.scale.y = 0.75;
   group.add(ring);
 
-  const bowl = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), propMaterial(0x7d7a75, 0.35));
+  const bowl = new THREE.Mesh(new THREE.CircleGeometry(1.5, 20), propMaterial(0x7d7a75, 0.12));
   bowl.rotation.x = -Math.PI / 2;
   bowl.position.y = 0.2;
   group.add(bowl);
@@ -119,7 +119,7 @@ export function buildSignStone(): THREE.Group {
 
   // The carved symbol: a ring with a short line beneath it, cut a little proud
   // of the face so the light catches it.
-  const carveMat = propMaterial(0x6f6a63, 0.35);
+  const carveMat = propMaterial(0x6f6a63, 0.12);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.075, 5, 16), carveMat);
   ring.position.set(0, 1.32, 0.18);
   group.add(ring);
@@ -147,7 +147,7 @@ export function buildBridge(): THREE.Group {
 
   const deck = new THREE.Mesh(
     new THREE.BoxGeometry(3.4, 0.36, span, 1, 1, 14),
-    propMaterial(0xa79274, 0.35),
+    propMaterial(0xa79274, 0.12),
   );
   const pos = deck.geometry.getAttribute('position');
   for (let i = 0; i < pos.count; i++) {

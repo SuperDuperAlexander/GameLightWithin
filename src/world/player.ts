@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LIGHT, PLAYER } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp01 } from '../core/math';
-import { toonMaterial } from '../render/materials';
+import { worldMaterial } from '../render/materials';
 
 /**
  * The player: a simple, soft, faceless figure. A rounded body, a small head and
@@ -28,8 +28,8 @@ export class PlayerFigure {
 
     // The player carries the strongest rim in the world, so the figure always
     // reads clearly against the meadow behind them.
-    const body = toonMaterial({ color: 0xe6e2dc, rim: 1.1 });
-    const cloak = toonMaterial({ color: 0xcfd6dd, rim: 1.1 });
+    const body = worldMaterial({ color: 0xe6e2dc, rim: 0.45 });
+    const cloak = worldMaterial({ color: 0xcfd6dd, rim: 0.45 });
 
     // Rounded body, wider at the hem so it reads as a cloak.
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.52, 1.1, 12, 1), cloak);

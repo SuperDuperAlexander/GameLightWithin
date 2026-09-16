@@ -23,6 +23,7 @@ export interface Snapshot {
   breathsTotal: number;
   breathsCalm: number;
   stride: number;
+  speed: number;
   mist: number;
   butterflyShown: boolean;
 }

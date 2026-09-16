@@ -315,6 +315,14 @@ export class Chapter1 {
       this.game.world.setBridgeRise(1);
     }
     if (scene >= 3) this.calm.set(CALM.heartThreshold + 0.05);
+    // A player who starts past the opening has already taken their first
+    // breath, so they do not start inside the waking mist.
+    if (scene >= 2) {
+      this.hasBreathed = true;
+      this.mist = 0;
+      this.stride = 1;
+      this.wakingMist.setStrength(0, PLAYER.wakingMistRadius);
+    }
     this.enterScene(scene, true);
   }
 

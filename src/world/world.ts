@@ -36,7 +36,7 @@ export class World {
   private readonly terrainMesh: THREE.Mesh;
   private readonly bridgeDeck: THREE.Mesh;
   /** The bridge's own colours, kept so the golden blend stays reversible. */
-  private readonly bridgeColors: { material: THREE.MeshToonMaterial; base: THREE.Color }[] = [];
+  private readonly bridgeColors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
   private bridgeGold = -1;
   private clock = 0;
   private readonly haze: THREE.Fog;
@@ -44,10 +44,14 @@ export class World {
   /** The direction the light comes from, kept so the shadow box can follow. */
   private readonly sunDir = new THREE.Vector3(38, 44, -62).normalize();
   private shadowTexelSize = 0;
+  private pmrem: THREE.PMREMGenerator | null = null;
+  private envScene: THREE.Scene | null = null;
+  private envTarget: THREE.WebGLRenderTarget | null = null;
+  private envColorAtBuild = -1;
   /** The chapter writes the player's ground speed here for the walk cycle. */
   playerSpeed = 0;
 
-  constructor(quality: QualitySettings) {
+  constructor(quality: QualitySettings, renderer?: THREE.WebGLRenderer) {
     const terrain = buildTerrain();
     this.terrainMesh = terrain.mesh;
     this.scene.add(terrain.mesh, terrain.chasm);
@@ -60,7 +64,7 @@ export class World {
     // One soft directional light plus an ambient fill.
     // The light stays near neutral so the valley reads grey at the start; the
     // warmth comes from the grey-to-colour system, not from the lamp.
-    this.sun = new THREE.DirectionalLight(0xfff6e6, 1.9);
+    this.sun = new THREE.DirectionalLight(0xfff6e6, 1.7);
     this.sun.position.set(38, 44, -62);
     this.sun.castShadow = false;
     this.sun.shadow.bias = SHADOW.bias;
@@ -74,13 +78,8 @@ export class World {
     cam.bottom = -SHADOW.boxSize / 2;
     cam.updateProjectionMatrix();
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(
-      new THREE.HemisphereLight(
-        new THREE.Color(PALETTE.skyGrey),
-        new THREE.Color(PALETTE.deepGreen),
-        1.6,
-      ),
-    );
+    // No ambient fill light. The environment map is the sky light now, and a
+    // flat fill on top of it only washes the contrast out of everything.
 
     const props = scatterProps(quality.treeBlobs);
     this.scene.add(props.group);
@@ -126,7 +125,7 @@ export class World {
     this.scene.add(this.bridge);
     this.bridgeDeck = this.bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
     this.bridge.traverse((o) => {
-      const material = (o as THREE.Mesh).material as THREE.MeshToonMaterial | undefined;
+      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
       if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
         this.bridgeColors.push({ material, base: material.color.clone() });
       }
@@ -160,6 +159,8 @@ export class World {
       mesh.receiveShadow = true;
     });
 
+    if (renderer) this.initEnvironment(renderer);
+
     // Aerial perspective. Distant ground fades into the sky, which is what
     // gives an open valley its depth. The colour follows the sky as the valley
     // returns to colour, so the haze never stays a cold grey over warm hills.
@@ -179,6 +180,31 @@ export class World {
     for (const entry of this.bridgeColors) {
       entry.material.color.copy(entry.base).lerp(GOLD, amount);
     }
+  }
+
+  /**
+   * Builds the image-based light.
+   *
+   * A second copy of the sky, sharing the same material, is filtered into an
+   * environment map. That map lights the shadowed side of every surface with
+   * real sky light instead of a flat ambient guess, and because it comes from
+   * the game's own sky it greys and warms with the valley for free.
+   */
+  private initEnvironment(renderer: THREE.WebGLRenderer): void {
+    this.pmrem = new THREE.PMREMGenerator(renderer);
+    this.envScene = new THREE.Scene();
+    this.envScene.add(new THREE.Mesh(this.sky.geometry, this.sky.material));
+    this.refreshEnvironment();
+  }
+
+  /** Re-filters the sky into the environment map. */
+  private refreshEnvironment(): void {
+    if (!this.pmrem || !this.envScene) return;
+    this.envTarget?.dispose();
+    this.envTarget = this.pmrem.fromScene(this.envScene, 0, 1, 400);
+    this.scene.environment = this.envTarget.texture;
+    this.scene.environmentIntensity = 0.35;
+    this.envColorAtBuild = this.color.globalColor;
   }
 
   /** Applies a quality tier to everything that can change during play. */
@@ -263,6 +289,12 @@ export class World {
       .copy(COLD_RIM)
       .lerp(WARM_RIM, this.color.globalColor);
     this.haze.color.copy(COLD_RIM).lerp(HAZE_WARM, this.color.globalColor);
+    // The sky changes slowly, so the environment map is only re-filtered when
+    // it has drifted far enough to see. Doing it every frame would cost more
+    // than everything else in the valley.
+    if (Math.abs(this.color.globalColor - this.envColorAtBuild) > 0.08) {
+      this.refreshEnvironment();
+    }
     updateSky(this.sky, this.clock);
     updateGrass(this.grass, this.clock, windStrength, windRadius, fogX, fogZ);
     updateAtmosphere(this.atmosphere, this.clock, this.player.group.position);

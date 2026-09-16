@@ -102,7 +102,7 @@ export class Game {
     this.autoQuality = this.flags.quality === null && settings.quality === 'auto';
     this.quality = settingsFor(tier);
 
-    this.world = new World(this.quality);
+    this.world = new World(this.quality, this.renderer);
     this.camera = new FollowCamera(window.innerWidth / Math.max(1, window.innerHeight));
     this.camera.reducedMotion = settings.reducedMotion;
     this.world.color.reducedMotion = settings.reducedMotion;

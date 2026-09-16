@@ -35,8 +35,11 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - **No network requests of any kind.** No analytics. No external fonts or CDNs.
   The font is self-hosted in `public/fonts`. A Playwright test fails the build
   if any request leaves the origin.
-- No model or texture files from outside. All art is made in code. The only
-  outside asset is the self-hosted font.
+- Outside assets are allowed where they raise the quality, but only under a
+  licence that permits commercial use without attribution, and only if they can
+  be bundled rather than fetched at run time. `@pmndrs/assets` is CC0 and ships
+  as data, which keeps the no-network rule intact. The geometry is still
+  generated in code.
 
 ## Performance budget
 
@@ -59,6 +62,16 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
   (trunk plus clustered soft blobs), a stone spring basin, a sign stone, a bridge.
 - Grass and flowers are camera-facing cards with procedural brush-stroke alpha.
 - Sky is a large dome with a painted gradient and soft cloud strokes from noise.
+- Surfaces are physically based and rough, never metal. The shadowed side of
+  everything is filled by an environment map filtered from the game's own sky,
+  so the sky light always matches what the player can see and greys and warms
+  with the valley for free. There is no ambient fill light on top of it: a flat
+  fill only washes the contrast out.
+- Tone mapping and the linear to sRGB conversion happen once, in the final
+  pass, so the raw-shader sky, grass and pollen get the same treatment as the
+  lit materials instead of drifting away from them.
+- The rim light is additive and sits on top of real lighting, so it is kept
+  low. Tuned against flat light it blows out anything seen edge on.
 - Light is baked into vertex colours or the shader, plus one soft directional
   light. That light casts a real shadow map on the medium and high tiers: the
   map covers a box that follows the player and is snapped to whole texels, so
