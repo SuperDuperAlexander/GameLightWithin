@@ -24,6 +24,16 @@ export const RHYTHM_PRESETS: Record<RhythmPreset['id'], RhythmPreset> = {
 export const BREATH = {
   /** Movement faster than this counts as walking and resets the breath. */
   walkResetSpeed: 0.25,
+  /**
+   * Calm breaths needed to wake the glow in scene 1. One is enough: the point
+   * is to feel the first breath land, not to drill a count.
+   */
+  wakeBreaths: 1,
+  /**
+   * Seconds the game waits between the in-breath ending and the out-breath
+   * starting before it gives up on the breath.
+   */
+  holdGraceFactor: 2,
   /** Outline strength of the breath circle. 1.0 in chapter 1, lower in later chapters. */
   circleStrength: 1.0,
   /** A breath shorter than this is treated as a mis-tap, not a breath. */
@@ -59,7 +69,13 @@ export const RECEIVE = {
   /** A hidden spring reveals itself after calm breaths taken inside this radius. */
   revealRadius: 6,
   /** Calm breaths needed inside `revealRadius` to reveal a hidden spring. */
-  revealBreaths: 2,
+  revealBreaths: 1,
+  /**
+   * Light a spring gives per calm breath. A spring holds three, so one calm
+   * breath empties it. Standing still for a whole breath is the moment that
+   * matters; repeating it three times only adds waiting.
+   */
+  lightPerBreath: 3,
   /** Seconds a light mote takes to travel from spring to player. */
   moteFlightSeconds: 1.6,
   /** Radius of the colour zone a spent spring leaves behind. */
@@ -74,11 +90,11 @@ export const TRANSFORM = {
   /** Step 2 "feel it" starts inside this radius. */
   feelRadius: 5,
   /** Calm breaths needed for step 2. */
-  feelBreaths: 2,
+  feelBreaths: 1,
   /** Step 3 "become one" starts inside this radius of the fog centre. */
   centerRadius: 2,
-  /** Calm breaths needed for step 3. */
-  centerBreaths: 3,
+  /** Calm breaths needed for step 3. This is the one place two are asked for. */
+  centerBreaths: 2,
   /** Leaving `seeRadius` before step 3 ends grows the fog by this factor. */
   fleeGrowth: 0.1,
   /** The fog never grows by more than this in total. */
@@ -88,7 +104,7 @@ export const TRANSFORM = {
   /** Each push adds this many calm breaths to step 3. */
   pushExtraBreaths: 1,
   /** Pushing never adds more than this many breaths. Push never works. */
-  pushExtraBreathsMax: 2,
+  pushExtraBreathsMax: 1,
   /** Seconds the fog takes to dissolve into motes. */
   dissolveSeconds: 2.5,
   /** Light released when the fog dissolves. */
@@ -118,7 +134,7 @@ export const MANIFEST = {
 
 export const THANKS = {
   /** Calm breaths needed on the finished bridge. */
-  breaths: 3,
+  breaths: 2,
   /** Seconds the global colour takes to reach 1. */
   colorSeconds: 6,
   /** The player counts as standing on the bridge inside this radius. */
@@ -146,6 +162,14 @@ export const COLOR = {
 
 export const PLAYER = {
   walkSpeed: 4.2,
+  /**
+   * How fast the player walks before their first breath. They are never held
+   * still: they can set off at once, just heavily, as if not yet awake. The
+   * first finished breath gives them their full stride, and keeps it.
+   */
+  wakingWalkFactor: 0.4,
+  /** Seconds the stride takes to open up after that first breath. */
+  wakingEaseSeconds: 2.5,
   /** How fast the player turns toward the movement direction, radians per second. */
   turnSpeed: 7,
   /** Slopes steeper than this cosine are not walkable. */

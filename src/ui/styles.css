@@ -350,9 +350,15 @@ input[type='range'] {
   gap: 14px;
 }
 
+.lw-breath-pair {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .lw-breath-btn {
-  width: 116px;
-  height: 116px;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   border: none;
   background: rgba(232, 184, 75, 0.34);
@@ -362,6 +368,16 @@ input[type='range'] {
   padding: 10px;
   cursor: pointer;
   touch-action: none;
+}
+
+/* The out-breath is the quieter half, so it sits cooler than the in-breath. */
+.lw-breath-btn--out {
+  background: rgba(116, 178, 141, 0.32);
+}
+
+.lw-breath-btn--out:active,
+.lw-breath-btn--out[data-held='true'] {
+  background: rgba(116, 178, 141, 0.6);
 }
 
 .lw-breath-btn:active,
@@ -407,7 +423,7 @@ input[type='range'] {
 /* The joystick and the big breath button are for touch only. The push and
    plant buttons stay on every device, next to their key. */
 body:not(.lw-touch) .lw-joystick,
-body:not(.lw-touch) .lw-breath-btn {
+body:not(.lw-touch) .lw-breath-pair {
   display: none;
 }
 

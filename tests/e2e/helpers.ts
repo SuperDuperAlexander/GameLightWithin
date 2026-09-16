@@ -20,6 +20,8 @@ export interface Snapshot {
   pz: number;
   yaw: number;
   breathPhase: string;
+  breathsTotal: number;
+  breathsCalm: number;
   butterflyShown: boolean;
 }
 

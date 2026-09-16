@@ -81,6 +81,14 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 ## Accessibility
 
 - Rhythm presets: normal, slow, easy.
+- The player is never held still. They can walk from the first second, at a
+  reduced stride, and the first finished breath opens it up for good.
+- One breath uses two keys: hold space to breathe in, hold shift to breathe
+  out. Letting go of a key is not an action; the out-breath is half the
+  practice and needs its own press. On touch there are two buttons.
+- Ask for repetition once, not three times. One calm breath wakes the valley,
+  one reveals a hidden spring, one draws a spring dry, one moves each fog step
+  except the last. Only the middle of the fog and the thanks ask for two.
 - Reduced motion: no camera shake, no trembling circle, slower colour transitions.
 - Every important cue is visual **and** audio.
 - Colour is never the only cue. A restored area is also **brighter** than a grey

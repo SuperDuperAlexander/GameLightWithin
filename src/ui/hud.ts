@@ -15,7 +15,8 @@ export class Hud {
   private readonly fogText: HTMLElement;
   private readonly pushBtn: HTMLButtonElement;
   private readonly interactBtn: HTMLButtonElement;
-  private readonly breathBtn: HTMLButtonElement;
+  private readonly breathInBtn: HTMLButtonElement;
+  private readonly breathOutBtn: HTMLButtonElement;
   private readonly joyKnob: HTMLElement;
 
   constructor(
@@ -66,26 +67,45 @@ export class Hud {
     this.interactBtn.addEventListener('click', onInteract);
     this.interactBtn.style.display = 'none';
 
-    this.breathBtn = el(
-      'button',
-      { class: 'lw-breath-btn', type: 'button', 'data-ui': '1', 'aria-label': t().hud.breatheIn },
-      t().hud.breatheIn,
-    );
-    const hold = (on: boolean) => (): void => {
-      this.input.touchBreath = on;
-      this.breathBtn.dataset.held = String(on);
+    // Two buttons, one per half of the breath, to match the two keys.
+    const makeBreathButton = (
+      label: string,
+      set: (on: boolean) => void,
+      cls: string,
+    ): HTMLButtonElement => {
+      const btn = el(
+        'button',
+        { class: `lw-breath-btn ${cls}`, type: 'button', 'data-ui': '1', 'aria-label': label },
+        label,
+      );
+      const hold = (on: boolean) => (): void => {
+        set(on);
+        btn.dataset.held = String(on);
+      };
+      btn.addEventListener('pointerdown', hold(true));
+      btn.addEventListener('pointerup', hold(false));
+      btn.addEventListener('pointercancel', hold(false));
+      btn.addEventListener('pointerleave', hold(false));
+      // The buttons must work from the keyboard too.
+      btn.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') hold(true)();
+      });
+      btn.addEventListener('keyup', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') hold(false)();
+      });
+      return btn;
     };
-    this.breathBtn.addEventListener('pointerdown', hold(true));
-    this.breathBtn.addEventListener('pointerup', hold(false));
-    this.breathBtn.addEventListener('pointercancel', hold(false));
-    this.breathBtn.addEventListener('pointerleave', hold(false));
-    // The breath button must work from the keyboard too.
-    this.breathBtn.addEventListener('keydown', (e) => {
-      if (e.key === ' ' || e.key === 'Enter') hold(true)();
-    });
-    this.breathBtn.addEventListener('keyup', (e) => {
-      if (e.key === ' ' || e.key === 'Enter') hold(false)();
-    });
+
+    this.breathInBtn = makeBreathButton(
+      t().hud.breatheInShort,
+      (on) => (this.input.touchBreathIn = on),
+      'lw-breath-btn--in',
+    );
+    this.breathOutBtn = makeBreathButton(
+      t().hud.breatheOutShort,
+      (on) => (this.input.touchBreathOut = on),
+      'lw-breath-btn--out',
+    );
 
     this.joyKnob = el('div', { class: 'lw-joystick-knob' });
     const joystick = el(
@@ -105,7 +125,13 @@ export class Hud {
       this.hint,
       el('div', { class: 'lw-corner' }, pauseBtn),
       joystick,
-      el('div', { class: 'lw-touch-right' }, this.pushBtn, this.interactBtn, this.breathBtn),
+      el(
+        'div',
+        { class: 'lw-touch-right' },
+        this.pushBtn,
+        this.interactBtn,
+        el('div', { class: 'lw-breath-pair' }, this.breathOutBtn, this.breathInBtn),
+      ),
     );
     this.joystickZone = joystick;
   }

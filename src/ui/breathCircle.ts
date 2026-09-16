@@ -74,17 +74,27 @@ export class BreathCircle {
   /**
    * @param target 0 to 1 target ring size
    * @param player 0 to 1 the size the player is holding
-   * @param targetInhaling whether the target rhythm is breathing in
+   * @param inhaling whether the player should be breathing in
    * @param time seconds, for the tremble
    */
-  update(target: number, player: number, targetInhaling: boolean, time: number): void {
+  update(target: number, player: number, inhaling: boolean, time: number): void {
     const shake = this.tremble > 0 ? Math.sin(time * 21) * this.tremble * 1.6 : 0;
     const rt = R_BASE + (R_FULL - R_BASE) * clamp01(target) + shake;
     const rp = R_DISC_MIN + (R_FULL - R_DISC_MIN) * clamp01(player);
     this.targetRing.setAttribute('r', rt.toFixed(2));
     this.playerRing.setAttribute('r', rp.toFixed(2));
     this.glowRing.setAttribute('r', (rp * 0.9).toFixed(2));
-    const want = targetInhaling ? t().hud.breatheIn : t().hud.breatheOut;
+    // On a keyboard the label names the key, because there is no button to
+    // read. On touch the buttons say it themselves.
+    const touch = document.body.classList.contains('lw-touch');
+    const s = t().hud;
+    const want = inhaling
+      ? touch
+        ? s.breatheIn
+        : s.breatheInKeys
+      : touch
+        ? s.breatheOut
+        : s.breatheOutKeys;
     if (this.label.textContent !== want) this.label.textContent = want;
   }
 

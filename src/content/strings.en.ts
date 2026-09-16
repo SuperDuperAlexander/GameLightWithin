@@ -56,6 +56,10 @@ export interface GameStrings {
   readonly hud: {
     readonly breatheIn: string;
     readonly breatheOut: string;
+    readonly breatheInShort: string;
+    readonly breatheOutShort: string;
+    readonly breatheInKeys: string;
+    readonly breatheOutKeys: string;
     readonly push: string;
     readonly pause: string;
     readonly plant: string;
@@ -150,7 +154,11 @@ export const en: GameStrings = {
   },
   hud: {
     breatheIn: 'Hold to breathe in',
-    breatheOut: 'Release to breathe out',
+    breatheOut: 'Hold to breathe out',
+    breatheInShort: 'Breathe in',
+    breatheOutShort: 'Breathe out',
+    breatheInKeys: 'Hold space to breathe in',
+    breatheOutKeys: 'Hold shift to breathe out',
     push: 'Push',
     pause: 'Pause',
     plant: 'Plant',

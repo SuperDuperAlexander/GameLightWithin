@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import {
+  BREATH,
   CALM,
   COLOR,
   HINTS,
   LAYOUT,
   MANIFEST,
+  PLAYER,
   RECEIVE,
   SCENE_STARTS,
   THANKS,
@@ -43,7 +45,7 @@ type Phase =
   | 'end';
 
 /** How many calm breaths scene 1 needs before the glow appears. */
-const WAKE_BREATHS = 3;
+const WAKE_BREATHS = BREATH.wakeBreaths;
 
 /**
  * Chapter 1 "Receive". This class owns the flow: the start screen, the six
@@ -77,7 +79,9 @@ export class Chapter1 {
   private settings: SettingsData;
   private save = loadSave();
   private wakeBreaths = 0;
-  private movementLocked = true;
+  /** 0 to 1, how much of their stride the player has. */
+  private stride: number = PLAYER.wakingWalkFactor;
+  private hasBreathed = false;
   /** Automatic calm breathing for the browser tests. */
   private autoClock = 0;
   private autoHeld = false;
@@ -194,6 +198,7 @@ export class Chapter1 {
 
   private wireEvents(): void {
     this.bus.on('breathCompleted', ({ calm }) => {
+      this.hasBreathed = true;
       this.breathsTotal++;
       if (calm) this.breathsCalm++;
       this.onBreathCompleted(calm);
@@ -311,7 +316,7 @@ export class Chapter1 {
     this.panels.close();
     this.hud.setVisible(true);
     this.game.setPaused(false);
-    this.movementLocked = scene === 1;
+
     if (scene === 1) this.wakeBreaths = 0;
     if (place) {
       const start = SCENE_STARTS[scene];
@@ -437,21 +442,21 @@ export class Chapter1 {
 
     if (this.scene === 1 && calm) {
       this.wakeBreaths++;
-      if (this.wakeBreaths >= WAKE_BREATHS) {
-        this.movementLocked = false;
-        this.advanceTo(2);
-      }
+      if (this.wakeBreaths >= WAKE_BREATHS) this.advanceTo(2);
     }
 
     const spring = this.receive.onBreath(calm, p.x, p.z);
     if (spring) {
       const anchor = this.game.world.springAnchors.get(spring.config.id);
       if (anchor) {
-        this.motes.send(
-          this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
-          RECEIVE.moteFlightSeconds,
-          () => this.light.add(1),
-        );
+        // One mote per light drawn, so the player sees what they received.
+        for (let i = 0; i < spring.lastGiven; i++) {
+          this.motes.send(
+            this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
+            RECEIVE.moteFlightSeconds + i * 0.35,
+            () => this.light.add(1),
+          );
+        }
       }
     }
 
@@ -480,15 +485,21 @@ export class Chapter1 {
     const walking = this.game.speed > 0.25;
 
     // Automatic calm breathing for the browser tests.
-    let held = this.game.input.breathHeld;
-    if (this.game.flags.autobreathe && this.phase === 'playing') held = this.autoBreathe(dt);
+    let inHeld = this.game.input.breathInHeld;
+    let outHeld = this.game.input.breathOutHeld;
+    if (this.game.flags.autobreathe && this.phase === 'playing') {
+      const auto = this.autoBreathe(dt);
+      inHeld = auto.inHeld;
+      outHeld = auto.outHeld;
+    }
 
     if (this.phase === 'playing' && !this.panels.isOpen) {
-      this.game.worldInputBlocked = this.movementLocked;
+      this.game.worldInputBlocked = false;
       // Desktop keys: E pushes, Enter plants. The on-screen buttons do the same.
       if (this.game.input.pushPressed) this.onPush();
       if (this.game.input.interactPressed) this.onInteract();
-      this.breath.update(dt, held, this.game.speed);
+      this.breath.update(dt, inHeld, outHeld, this.game.speed);
+      this.updateStride(dt);
       this.calm.update(dt, walking);
       this.checks.update(dt);
       this.runScene(dt, p.x, p.z);
@@ -522,12 +533,27 @@ export class Chapter1 {
     this.game.light = this.light.get();
   }
 
-  private autoBreathe(dt: number): boolean {
+  private autoBreathe(dt: number): { inHeld: boolean; outHeld: boolean } {
     const preset = this.breath.getPreset();
     const cycle = preset.inhale + preset.exhale;
     this.autoClock = (this.autoClock + dt) % cycle;
-    this.autoHeld = this.autoClock < preset.inhale;
-    return this.autoHeld;
+    const inHeld = this.autoClock < preset.inhale;
+    this.autoHeld = inHeld;
+    return { inHeld, outHeld: !inHeld };
+  }
+
+  /**
+   * The player's stride. They can set off at once, but heavily, as if not yet
+   * awake. The first finished breath opens the stride up, and it stays open.
+   */
+  private updateStride(dt: number): void {
+    const target = this.hasBreathed ? 1 : PLAYER.wakingWalkFactor;
+    const step = dt / PLAYER.wakingEaseSeconds;
+    this.stride =
+      this.stride < target
+        ? Math.min(target, this.stride + step)
+        : Math.max(target, this.stride - step);
+    this.game.strideFactor = this.stride;
   }
 
   /**
@@ -656,7 +682,8 @@ export class Chapter1 {
     this.hud.breathCircle.update(
       this.breath.targetRing,
       this.breath.playerRing,
-      this.breath.targetPhase() === 'inhale',
+      // The label follows what the player should do next, not the demo rhythm.
+      this.breath.playerPhase() === 'inhale',
       this.game.time,
     );
     this.hud.breathCircle.setVisible(this.phase === 'playing');

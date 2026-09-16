@@ -70,6 +70,8 @@ export class Game {
    */
   autoWalk: { x: number; z: number } | null = null;
   readonly wind = { x: 0, z: 0, strength: 0, radius: 1 };
+  /** 0 to 1, how much of their walking speed the player currently has. */
+  strideFactor = 1;
 
   constructor(
     readonly root: HTMLElement,
@@ -251,7 +253,7 @@ export class Game {
       mz += inwardZ * this.borderPush * 1.6;
     }
 
-    const step = PLAYER.walkSpeed * dt;
+    const step = PLAYER.walkSpeed * this.strideFactor * dt;
     const moved = this.world.ground.resolveMove(p.x, p.z, mx * step, mz * step);
     const dx = moved.x - p.x;
     const dz = moved.z - p.z;
