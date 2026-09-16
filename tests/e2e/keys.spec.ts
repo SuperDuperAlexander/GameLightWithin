@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { RHYTHM_PRESETS } from '../../src/content/chapter1';
 import { snap, waitForSnap } from './helpers';
+
+// Read the rhythm from the preset the test selects, so retuning the game
+// changes the game and not the test.
+const EASY = RHYTHM_PRESETS.easy;
 
 test('space and shift make a breath, and the stride opens up', async ({ page }) => {
   test.setTimeout(240_000);
@@ -33,12 +38,12 @@ test('space and shift make a breath, and the stride opens up', async ({ page }) 
 
   // One breath: hold space, then hold shift, then let go.
   await page.keyboard.down('Space');
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(EASY.inhale * 1000);
   await page.keyboard.up('Space');
   await page.keyboard.down('Shift');
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(EASY.exhale * 1000);
   await page.keyboard.up('Shift');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(800);
 
   const c = await snap(page);
   expect(c.breathsTotal, 'the two keys completed a breath').toBeGreaterThanOrEqual(1);

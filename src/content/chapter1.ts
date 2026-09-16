@@ -15,10 +15,19 @@ export interface RhythmPreset {
   readonly tolerance: number;
 }
 
+/**
+ * The rhythms.
+ *
+ * These are shorter than a breathing practice would use on purpose. A four
+ * second in-breath and a six second out-breath is a fine thing to sit with,
+ * but in a game it is ten seconds of holding a key before anything happens,
+ * and the player feels the wait rather than the breath. `slow` keeps the
+ * longer rhythm for anyone who wants it.
+ */
 export const RHYTHM_PRESETS: Record<RhythmPreset['id'], RhythmPreset> = {
-  normal: { id: 'normal', inhale: 4, exhale: 6, tolerance: 0.3 },
-  slow: { id: 'slow', inhale: 5, exhale: 7, tolerance: 0.3 },
-  easy: { id: 'easy', inhale: 3, exhale: 4, tolerance: 0.45 },
+  normal: { id: 'normal', inhale: 3, exhale: 4, tolerance: 0.35 },
+  slow: { id: 'slow', inhale: 4, exhale: 6, tolerance: 0.3 },
+  easy: { id: 'easy', inhale: 2, exhale: 3, tolerance: 0.45 },
 };
 
 export const BREATH = {
@@ -77,7 +86,7 @@ export const RECEIVE = {
    */
   lightPerBreath: 3,
   /** Seconds a light mote takes to travel from spring to player. */
-  moteFlightSeconds: 1.6,
+  moteFlightSeconds: 1,
   /** Radius of the colour zone a spent spring leaves behind. */
   zoneRadius: 16,
 } as const;
@@ -86,15 +95,19 @@ export const TRANSFORM = {
   /** Step 1 "see it" starts inside this radius. */
   seeRadius: 8,
   /** Seconds the thought text needs to appear fully. Cannot be skipped. */
-  seeSeconds: 4,
+  seeSeconds: 2.5,
   /** Step 2 "feel it" starts inside this radius. */
   feelRadius: 5,
   /** Calm breaths needed for step 2. */
   feelBreaths: 1,
   /** Step 3 "become one" starts inside this radius of the fog centre. */
   centerRadius: 2,
-  /** Calm breaths needed for step 3. This is the one place two are asked for. */
-  centerBreaths: 2,
+  /**
+   * Calm breaths needed for step 3. One, like every other gate: the fog
+   * already asks the player to see it, stand in the wind, and walk into the
+   * middle. Asking for a second breath on top only adds waiting.
+   */
+  centerBreaths: 1,
   /** Leaving `seeRadius` before step 3 ends grows the fog by this factor. */
   fleeGrowth: 0.1,
   /** The fog never grows by more than this in total. */
@@ -134,7 +147,7 @@ export const MANIFEST = {
 
 export const THANKS = {
   /** Calm breaths needed on the finished bridge. */
-  breaths: 2,
+  breaths: 1,
   /** Seconds the global colour takes to reach 1. */
   colorSeconds: 6,
   /** The player counts as standing on the bridge inside this radius. */

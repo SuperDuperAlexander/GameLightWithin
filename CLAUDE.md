@@ -102,7 +102,13 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 ## Accessibility
 
-- Rhythm presets: normal, slow, easy.
+- Rhythm presets: normal (in 3, out 4), slow (in 4, out 6), easy (in 2, out 3).
+  These are shorter than a breathing practice would use, on purpose. Four in and
+  six out is a fine thing to sit with, but in a game it is ten seconds of
+  holding a key before anything happens, and the player feels the wait rather
+  than the breath. `slow` keeps the longer rhythm for anyone who wants it.
+- Tests read durations from the presets, never as written-out numbers, so
+  retuning the rhythm changes the game and not the tests.
 - The player is never held still. They walk from the first second, but inside
   their own mist and with a short stride, and pushing on without stopping
   thickens it. One finished breath clears it for good. The penalty is something
@@ -112,9 +118,11 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - One breath uses two keys: hold space to breathe in, hold shift to breathe
   out. Letting go of a key is not an action; the out-breath is half the
   practice and needs its own press. On touch there are two buttons.
-- Ask for repetition once, not three times. One calm breath wakes the valley,
-  one reveals a hidden spring, one draws a spring dry, one moves each fog step
-  except the last. Only the middle of the fog and the thanks ask for two.
+- Ask for repetition once. Every gate in the chapter is one calm breath: waking
+  the valley, revealing a hidden spring, drawing a spring dry, each step of the
+  fog, and the thanks on the bridge. The fog already asks the player to see it,
+  stand in the wind and walk into the middle; a second breath on top of that is
+  only waiting.
 - Reduced motion: no camera shake, no trembling circle, slower colour transitions.
 - Every important cue is visual **and** audio.
 - Colour is never the only cue. A restored area is also **brighter** than a grey
