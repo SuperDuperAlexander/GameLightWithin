@@ -1,13 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  loadSave,
-  saveSave,
+  chapterProgress,
   clearSave,
-  loadSettings,
-  saveSettings,
   loadChecks,
-  DEFAULT_SAVE,
+  loadSave,
+  loadSettings,
+  saveSave,
+  saveSettings,
+  setChapterProgress,
+  unlockedChapters,
 } from '../../src/core/save';
+import {
+  CHAPTERS,
+  LAST_AVAILABLE_CHAPTER,
+  isLastChapter,
+  nextChapter,
+} from '../../src/content/chapters';
 import { ChecksSystem } from '../../src/systems/checks';
 
 describe('save', () => {
@@ -15,54 +23,89 @@ describe('save', () => {
     localStorage.clear();
   });
 
-  it('starts at scene 1 with no light when nothing is stored', () => {
+  it('starts at chapter 1 scene 1 with nothing stored', () => {
     const s = loadSave();
-    expect(s.scene).toBe(1);
-    expect(s.light).toBe(0);
-    expect(s.completed).toBe(false);
+    expect(s.current).toBe(1);
+    expect(chapterProgress(s, 1)).toEqual({ scene: 1, light: 0, completed: false });
   });
 
-  it('restores the correct scene and light', () => {
-    saveSave({ ...DEFAULT_SAVE, scene: 4, light: 6 });
+  it('keeps progress per chapter', () => {
     const s = loadSave();
-    expect(s.scene).toBe(4);
-    expect(s.light).toBe(6);
+    setChapterProgress(s, 1, { scene: 4, light: 6, completed: true });
+    setChapterProgress(s, 2, { scene: 2, light: 3 });
+    saveSave(s);
+
+    const back = loadSave();
+    expect(chapterProgress(back, 1)).toEqual({ scene: 4, light: 6, completed: true });
+    expect(chapterProgress(back, 2)).toEqual({ scene: 2, light: 3, completed: false });
+    expect(back.current).toBe(2);
   });
 
   it('restores the start answers', () => {
-    saveSave({ ...DEFAULT_SAVE, scene: 2, startAnswers: { receive: 3, calm: 5 } });
+    const s = loadSave();
+    s.startAnswers = { receive: 3, calm: 5 };
+    saveSave(s);
     expect(loadSave().startAnswers).toEqual({ receive: 3, calm: 5 });
   });
 
   it('falls back to scene 1 when the stored scene is out of range', () => {
-    localStorage.setItem(
-      'lightwithin.save.v1',
-      JSON.stringify({ version: 1, scene: 99, light: 3 }),
-    );
-    expect(loadSave().scene).toBe(1);
+    const s = loadSave();
+    setChapterProgress(s, 1, { scene: 99 });
+    saveSave(s);
+    expect(chapterProgress(loadSave(), 1).scene).toBe(1);
   });
 
   it('clamps stored light to the maximum', () => {
-    localStorage.setItem(
-      'lightwithin.save.v1',
-      JSON.stringify({ version: 1, scene: 2, light: 500 }),
-    );
-    expect(loadSave().light).toBe(12);
+    const s = loadSave();
+    setChapterProgress(s, 1, { light: 500 });
+    saveSave(s);
+    expect(chapterProgress(loadSave(), 1).light).toBe(12);
   });
 
   it('survives a broken entry', () => {
     localStorage.setItem('lightwithin.save.v1', 'not json');
-    expect(loadSave().scene).toBe(1);
+    expect(loadSave().current).toBe(1);
+  });
+
+  /**
+   * A player part way through chapter 1 must not lose their walk because the
+   * save format grew a chapter around it.
+   */
+  it('moves a version 1 save into the per-chapter shape', () => {
+    localStorage.setItem(
+      'lightwithin.save.v1',
+      JSON.stringify({
+        version: 1,
+        scene: 4,
+        light: 6,
+        completed: false,
+        startAnswers: { receive: 2, calm: 4 },
+        endAnswers: { receive: null, calm: null },
+      }),
+    );
+    const s = loadSave();
+    expect(s.version).toBe(2);
+    expect(chapterProgress(s, 1)).toEqual({ scene: 4, light: 6, completed: false });
+    expect(s.startAnswers).toEqual({ receive: 2, calm: 4 });
+    expect(s.current).toBe(1);
   });
 
   it('clears the save', () => {
-    saveSave({ ...DEFAULT_SAVE, scene: 5 });
+    const s = loadSave();
+    setChapterProgress(s, 1, { scene: 5 });
+    saveSave(s);
     clearSave();
-    expect(loadSave().scene).toBe(1);
+    expect(chapterProgress(loadSave(), 1).scene).toBe(1);
   });
 
   it('stores and restores settings', () => {
-    saveSettings({ rhythm: 'slow', quality: 'low', volume: 0.3, muted: true, reducedMotion: true });
+    saveSettings({
+      rhythm: 'slow',
+      quality: 'low',
+      volume: 0.3,
+      muted: true,
+      reducedMotion: true,
+    });
     const s = loadSettings();
     expect(s.rhythm).toBe('slow');
     expect(s.quality).toBe('low');
@@ -93,6 +136,47 @@ describe('save', () => {
     };
     expect(parsed.chapter).toBe(1);
     expect(parsed.checks.walkedAwayFromSeed).toBe(true);
+  });
+});
+
+describe('chapter unlocking', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('offers only chapter 1 on a fresh save', () => {
+    expect(unlockedChapters(loadSave())).toEqual([1]);
+  });
+
+  it('offers chapter 2 once chapter 1 is finished', () => {
+    const s = loadSave();
+    setChapterProgress(s, 1, { completed: true });
+    expect(unlockedChapters(s)).toEqual([1, 2]);
+  });
+
+  it('never offers a chapter that is not built', () => {
+    const s = loadSave();
+    setChapterProgress(s, 1, { completed: true });
+    setChapterProgress(s, 2, { completed: true });
+    expect(unlockedChapters(s)).not.toContain(3);
+  });
+
+  it('asks the closing questions only after the last chapter in the build', () => {
+    expect(isLastChapter(LAST_AVAILABLE_CHAPTER)).toBe(true);
+    expect(isLastChapter(1)).toBe(false);
+    expect(CHAPTERS[LAST_AVAILABLE_CHAPTER].built).toBe(true);
+  });
+
+  it('knows which chapter comes next', () => {
+    expect(nextChapter(1)).toBe(2);
+    // Chapter 3 is listed but not built, so chapter 2 has no next yet.
+    expect(nextChapter(2)).toBeNull();
+  });
+
+  it('gives each chapter its own starting light and help level', () => {
+    expect(CHAPTERS[1].startLight).toBe(0);
+    expect(CHAPTERS[2].startLight).toBe(3);
+    expect(CHAPTERS[2].circleStrength).toBeLessThan(CHAPTERS[1].circleStrength);
   });
 });
 

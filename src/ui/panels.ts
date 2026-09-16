@@ -1,5 +1,8 @@
 import { GAME_TITLE, t } from '../content/strings.en';
 import type { Answers, SettingsData } from '../core/save';
+import { CHAPTERS, CHAPTER_IDS } from '../content/chapters';
+import type { ChapterId } from '../content/chapters';
+import type { FeelingType } from '../content/chapter2';
 import { button, el, focusFirst } from './dom';
 
 /**
@@ -43,28 +46,70 @@ export class Panels {
     };
   }
 
-  /** Start screen: title, Begin and Settings. */
-  startScreen(
-    onBegin: () => void,
-    onSettings: () => void,
-    hasSave: boolean,
-    onContinue: () => void,
-  ): void {
+  /**
+   * Start screen: the title, the chapters, and settings.
+   *
+   * Every chapter the player has unlocked is listed, so they can walk one
+   * again. A chapter that is not built yet is shown but not offered, so the
+   * shape of the whole thing is visible from the first screen.
+   */
+  startScreen(options: {
+    unlocked: ChapterId[];
+    resumeChapter: ChapterId | null;
+    onChapter: (id: ChapterId) => void;
+    onResume: () => void;
+    onSettings: () => void;
+  }): void {
     const s = t();
     const panel = el(
       'div',
       { class: 'lw-panel', role: 'dialog', 'aria-label': GAME_TITLE },
       el('h1', { class: 'lw-title' }, GAME_TITLE),
       el('p', { class: 'lw-sub' }, s.start.subtitle),
+      el('p', { class: 'lw-build' }, `${s.start.version} ${__BUILD_STAMP__}`),
     );
-    // The build stamp. If this does not match what was just shipped, the game
-    // being looked at is an older build.
-    panel.append(el('p', { class: 'lw-build' }, `${s.start.version} ${__BUILD_STAMP__}`));
-    const row = el('div', { class: 'lw-row' });
-    row.append(button(s.start.begin, 'lw-btn', this.tap(onBegin)));
-    if (hasSave) row.append(button(s.pause.resume, 'lw-btn lw-btn--quiet', this.tap(onContinue)));
-    row.append(button(s.start.settings, 'lw-btn lw-btn--quiet', this.tap(onSettings)));
-    panel.append(row);
+
+    if (options.resumeChapter !== null) {
+      panel.append(
+        el(
+          'div',
+          { class: 'lw-row' },
+          button(s.pause.resume, 'lw-btn', this.tap(options.onResume)),
+        ),
+      );
+    }
+
+    panel.append(el('h2', { class: 'lw-heading' }, s.chapters.select));
+    const list = el('div', { class: 'lw-row' });
+    for (const id of CHAPTER_IDS) {
+      const info = CHAPTERS[id];
+      const unlocked = options.unlocked.includes(id);
+      const b = el('button', {
+        class: `lw-btn lw-btn--stack${unlocked ? '' : ' lw-btn--quiet'}`,
+        type: 'button',
+        'data-ui': '1',
+        'data-chapter': String(id),
+      });
+      b.append(
+        `${String(id)}. ${s.chapters[info.titleKey]}`,
+        el('small', {}, unlocked ? '' : info.built ? s.chapters.locked : s.end.comingSoon),
+      );
+      b.disabled = !unlocked;
+      if (unlocked)
+        b.addEventListener(
+          'click',
+          this.tap(() => options.onChapter(id)),
+        );
+      list.append(b);
+    }
+    panel.append(
+      list,
+      el(
+        'div',
+        { class: 'lw-row' },
+        button(s.start.settings, 'lw-btn lw-btn--quiet', this.tap(options.onSettings)),
+      ),
+    );
     this.show(panel);
   }
 
@@ -237,12 +282,17 @@ export class Panels {
     this.show(panel);
   }
 
-  pause(onResume: () => void, onSettings: () => void, onStart: () => void): void {
+  pause(
+    onResume: () => void,
+    onSettings: () => void,
+    onStart: () => void,
+    heading: string = t().pause.heading,
+  ): void {
     const s = t();
     const panel = el(
       'div',
-      { class: 'lw-panel', role: 'dialog', 'aria-label': s.pause.heading },
-      el('h2', { class: 'lw-title' }, s.pause.heading),
+      { class: 'lw-panel', role: 'dialog', 'aria-label': heading },
+      el('h2', { class: 'lw-title' }, heading),
       el(
         'div',
         { class: 'lw-row' },
@@ -254,8 +304,16 @@ export class Panels {
     this.show(panel);
   }
 
-  /** The seed choice. Only "Bridge" is enabled in chapter 1. */
-  seedChoice(canAfford: boolean, onPlant: () => void, onCancel: () => void): void {
+  /**
+   * The seed choice. Each chapter offers the one seed its place can hold:
+   * a bridge over the chapter 1 gap, a tree in the chapter 2 meadows.
+   */
+  seedChoice(
+    canAfford: boolean,
+    onPlant: () => void,
+    onCancel: () => void,
+    offered: 'bridge' | 'tree' = 'bridge',
+  ): void {
     const s = t();
     const panel = el(
       'div',
@@ -263,20 +321,33 @@ export class Panels {
       el('h2', { class: 'lw-heading' }, s.seed.heading),
     );
     const row = el('div', { class: 'lw-row' });
+    const labels = {
+      bridge: s.seed.bridge,
+      tree: s.seed.tree,
+      house: s.seed.house,
+      well: s.seed.well,
+    };
 
-    const bridge = el('button', { class: 'lw-btn lw-btn--stack', type: 'button', 'data-ui': '1' });
-    bridge.append(s.seed.bridge, el('small', {}, canAfford ? s.seed.cost : s.seed.notEnough));
-    bridge.disabled = !canAfford;
-    bridge.addEventListener('click', this.tap(onPlant));
-    row.append(bridge);
-
-    for (const label of [s.seed.tree, s.seed.house, s.seed.well]) {
+    for (const key of ['bridge', 'tree', 'house', 'well'] as const) {
+      if (key === offered) {
+        const b = el('button', {
+          class: 'lw-btn lw-btn--stack',
+          type: 'button',
+          'data-ui': '1',
+          'data-seed': key,
+        });
+        b.append(labels[key], el('small', {}, canAfford ? s.seed.cost : s.seed.notEnough));
+        b.disabled = !canAfford;
+        b.addEventListener('click', this.tap(onPlant));
+        row.append(b);
+        continue;
+      }
       const b = el('button', {
         class: 'lw-btn lw-btn--quiet lw-btn--stack',
         type: 'button',
         disabled: 'true',
       });
-      b.append(label, el('small', {}, s.seed.comingSoon));
+      b.append(labels[key], el('small', {}, s.seed.comingSoon));
       row.append(b);
     }
 
@@ -328,6 +399,85 @@ export class Panels {
     this.show(panel);
   }
 
+  /**
+   * Learning cycle step 1 for chapter 2. Every answer gets the same reply,
+   * including "None": noticing nothing is also noticing.
+   */
+  reflect2(onNext: () => void): void {
+    const s = t();
+    const panel = el(
+      'div',
+      { class: 'lw-panel', role: 'dialog', 'aria-label': s.reflect2.question },
+      el('h2', { class: 'lw-heading' }, s.reflect2.question),
+    );
+    const row = el('div', { class: 'lw-row' });
+    const reply = el('p', { class: 'lw-text' }, '');
+    reply.style.visibility = 'hidden';
+    const next = button(s.end.next, 'lw-btn', this.tap(onNext));
+    next.style.display = 'none';
+
+    for (const answer of [
+      s.reflect2.sadness,
+      s.reflect2.anger,
+      s.reflect2.worry,
+      s.reflect2.none,
+    ]) {
+      row.append(
+        button(
+          answer,
+          'lw-btn lw-btn--quiet',
+          this.tap(() => {
+            reply.textContent = s.reflect.reply;
+            reply.style.visibility = 'visible';
+            row.style.display = 'none';
+            next.style.display = '';
+            next.focus();
+          }),
+        ),
+      );
+    }
+    panel.append(row, reply, el('div', { class: 'lw-row' }, next));
+    this.show(panel);
+  }
+
+  /**
+   * Asks the player to name the weather in front of them.
+   *
+   * The three answers are shuffled every time, so the panel cannot be learned
+   * as a position. A name that does not fit is never called wrong.
+   */
+  naming(order: FeelingType[], onAnswer: (choice: FeelingType) => void): void {
+    const s = t();
+    const panel = el(
+      'div',
+      { class: 'lw-panel', role: 'dialog', 'aria-label': s.naming.question },
+      el('h2', { class: 'lw-heading' }, s.naming.question),
+    );
+    const row = el('div', { class: 'lw-row' });
+    for (const feeling of order) {
+      const b = button(
+        s.naming[feeling],
+        'lw-btn',
+        this.tap(() => onAnswer(feeling)),
+      );
+      b.dataset.feeling = feeling;
+      row.append(b);
+    }
+    panel.append(row);
+    this.show(panel);
+  }
+
+  /** The reply to a name that does not fit. It never says "wrong". */
+  lookAgain(): void {
+    this.show(
+      el(
+        'div',
+        { class: 'lw-panel', role: 'dialog' },
+        el('p', { class: 'lw-text' }, t().naming.lookAgain),
+      ),
+    );
+  }
+
   /** One text card with a Next button. Used by Understand and Apply. */
   card(text: string, onNext: () => void): void {
     const panel = el(
@@ -339,26 +489,53 @@ export class Panels {
     this.show(panel);
   }
 
-  chapterEnd(onAgain: () => void, onStart: () => void): void {
+  /**
+   * The chapter end screen. When another chapter is built, the coming-soon
+   * button becomes the way into it.
+   */
+  chapterEnd(options: {
+    heading: string;
+    next: ChapterId | null;
+    onAgain: () => void;
+    onStart: () => void;
+    onNext: () => void;
+  }): void {
     const s = t();
-    const soon = el('button', {
-      class: 'lw-btn lw-btn--quiet lw-btn--stack',
-      type: 'button',
-      disabled: 'true',
-    });
-    soon.append(s.end.nextChapter, el('small', {}, s.end.comingSoon));
-    const panel = el(
+    const row = el(
       'div',
-      { class: 'lw-panel', role: 'dialog', 'aria-label': s.end.heading },
-      el('h2', { class: 'lw-title' }, s.end.heading),
+      { class: 'lw-row' },
+      button(s.end.playAgain, 'lw-btn lw-btn--quiet', this.tap(options.onAgain)),
+      button(s.end.toStart, 'lw-btn lw-btn--quiet', this.tap(options.onStart)),
+    );
+    if (options.next === null) {
+      const soon = el('button', {
+        class: 'lw-btn lw-btn--quiet lw-btn--stack',
+        type: 'button',
+        disabled: 'true',
+      });
+      soon.append(s.end.nextChapter, el('small', {}, s.end.comingSoon));
+      row.append(soon);
+    } else {
+      const go = el('button', {
+        class: 'lw-btn lw-btn--stack',
+        type: 'button',
+        'data-ui': '1',
+        'data-next-chapter': String(options.next),
+      });
+      go.append(
+        s.end.continueTo,
+        el('small', {}, `${String(options.next)}. ${s.chapters[CHAPTERS[options.next].titleKey]}`),
+      );
+      go.addEventListener('click', this.tap(options.onNext));
+      row.append(go);
+    }
+    this.show(
       el(
         'div',
-        { class: 'lw-row' },
-        button(s.end.playAgain, 'lw-btn', this.tap(onAgain)),
-        button(s.end.toStart, 'lw-btn lw-btn--quiet', this.tap(onStart)),
-        soon,
+        { class: 'lw-panel', role: 'dialog', 'aria-label': options.heading },
+        el('h2', { class: 'lw-title' }, options.heading),
+        row,
       ),
     );
-    this.show(panel);
   }
 }

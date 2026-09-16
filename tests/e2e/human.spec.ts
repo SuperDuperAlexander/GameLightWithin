@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LAYOUT } from '../../src/content/chapter1';
-import { answerQuestions, call, snap, startChapter, waitForSnap } from './helpers';
+import { answerQuestions, beginChapter, call, snap, startChapter, waitForSnap } from './helpers';
 
 /**
  * The valley is one open place. A player may reach any part of it in any
@@ -16,7 +16,7 @@ test('the fog works even when the hidden spring was never found', async ({ page 
   test.setTimeout(600_000);
 
   await startChapter(page, '/?autobreathe=1&debug=1&quality=low&nopaint=1');
-  await page.getByRole('button', { name: 'Begin' }).click();
+  await beginChapter(page);
   await answerQuestions(page, 3);
 
   // Scene 1 ends after three calm breaths, wherever the player stands.

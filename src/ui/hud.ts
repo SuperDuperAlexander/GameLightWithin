@@ -10,7 +10,7 @@ import { el } from './dom';
  */
 export class Hud {
   readonly root: HTMLElement;
-  readonly breathCircle = new BreathCircle();
+  readonly breathCircle: BreathCircle;
   private readonly hint: HTMLElement;
   private readonly fogText: HTMLElement;
   private readonly pushBtn: HTMLButtonElement;
@@ -24,7 +24,9 @@ export class Hud {
     onPause: () => void,
     onPush: () => void,
     onInteract: () => void,
+    circleStrength?: number,
   ) {
+    this.breathCircle = new BreathCircle(circleStrength);
     // A laptop with a touchscreen reports touch points but is played with a
     // keyboard, so showing the joystick straight away just clutters the view.
     // The touch controls appear the first time a finger is actually used.

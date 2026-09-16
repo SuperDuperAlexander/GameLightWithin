@@ -18,7 +18,19 @@ import { AudioEngine } from './audio/audio';
 import type { Game } from './game';
 import { clamp01, dist2d, smoothstep } from './core/math';
 import type { SettingsData } from './core/save';
-import { clearSave, loadSave, loadSettings, saveSave, saveSettings } from './core/save';
+import { isLastChapter, nextChapter } from './content/chapters';
+import type { ChapterId } from './content/chapters';
+import {
+  chapterProgress,
+  isChapterComplete,
+  loadSave,
+  loadSettings,
+  saveSave,
+  saveSettings,
+  setChapterProgress,
+  unlockedChapters,
+} from './core/save';
+
 import { BreathSystem } from './systems/breath';
 import { CalmSystem } from './systems/calm';
 import { ChecksSystem } from './systems/checks';
@@ -89,6 +101,10 @@ export class Chapter1 {
   private scene: SceneId = 1;
   private settings: SettingsData;
   private save = loadSave();
+  /** This chapter's own slot in the save file. */
+  private readonly chapterId = 1 as const;
+  /** The router sets this so a chapter can hand over to another one. */
+  onLeaveToChapter: ((id: ChapterId) => void) | null = null;
   private wakeBreaths = 0;
   /** 0 to 1, how much of their stride the player has. */
   private stride: number = PLAYER.wakingWalkFactor;
@@ -243,7 +259,7 @@ export class Chapter1 {
   /** Writes everything that is only in memory. Safe to call at any time. */
   private saveNow(): void {
     this.checks.flushScene();
-    this.save.light = this.light.get();
+    setChapterProgress(this.save, this.chapterId, { light: this.light.get() });
     saveSave(this.save);
   }
 
@@ -262,17 +278,25 @@ export class Chapter1 {
   }
 
   private showStart(): void {
-    this.panels.startScreen(
-      () => this.startFresh(),
-      () => this.openSettings(() => this.showStart()),
-      this.save.scene > 1 && !this.save.completed,
-      () => this.resumeSave(),
-    );
+    const progress = chapterProgress(this.save, this.chapterId);
+    const canResume = progress.scene > 1 && !isChapterComplete(this.save, this.chapterId);
+    this.panels.startScreen({
+      unlocked: unlockedChapters(this.save, this.chapterId),
+      resumeChapter: canResume ? this.chapterId : null,
+      onChapter: (id) => {
+        if (id === this.chapterId) this.startFresh();
+        else this.onLeaveToChapter?.(id);
+      },
+      onResume: () => this.resumeSave(),
+      onSettings: () => this.openSettings(() => this.showStart()),
+    });
   }
 
   private startFresh(): void {
-    clearSave();
-    this.save = loadSave();
+    // Only this chapter starts over. A player walking chapter 1 again must not
+    // lose the chapters they have already finished.
+    setChapterProgress(this.save, this.chapterId, { scene: 1, light: 0, completed: false });
+    saveSave(this.save);
     this.checks.reset();
     this.phase = 'startQuestions';
     this.panels.questions(this.save.startAnswers, (a) => {
@@ -283,8 +307,9 @@ export class Chapter1 {
   }
 
   private resumeSave(): void {
-    this.light.set(this.save.light);
-    this.enterScene(this.save.scene, true);
+    const progress = chapterProgress(this.save, this.chapterId);
+    this.light.set(progress.light);
+    this.enterScene(progress.scene as SceneId, true);
   }
 
   /** `?scene=N` starts directly at a scene with the right amount of light. */
@@ -328,8 +353,7 @@ export class Chapter1 {
 
   private enterScene(scene: SceneId, place: boolean): void {
     this.scene = scene;
-    this.save.scene = scene;
-    this.save.light = this.light.get();
+    setChapterProgress(this.save, this.chapterId, { scene, light: this.light.get() });
     saveSave(this.save);
     this.checks.enterScene(scene);
     this.phase = 'playing';
@@ -354,7 +378,7 @@ export class Chapter1 {
 
   private finishChapter(): void {
     this.checks.flushScene();
-    this.save.completed = true;
+    setChapterProgress(this.save, this.chapterId, { completed: true });
     saveSave(this.save);
     this.phase = 'reflect';
     this.hud.setVisible(false);
@@ -364,11 +388,16 @@ export class Chapter1 {
         this.phase = 'apply';
         this.panels.card(t().apply.card, () => {
           this.phase = 'endQuestions';
-          this.panels.questions(this.save.endAnswers, (a) => {
-            this.save.endAnswers = a;
-            saveSave(this.save);
+          if (isLastChapter(this.chapterId)) {
+            this.phase = 'endQuestions';
+            this.panels.questions(this.save.endAnswers, (a) => {
+              this.save.endAnswers = a;
+              saveSave(this.save);
+              this.showEnd();
+            });
+          } else {
             this.showEnd();
-          });
+          }
         });
       });
     });
@@ -376,13 +405,18 @@ export class Chapter1 {
 
   private showEnd(): void {
     this.phase = 'end';
-    this.panels.chapterEnd(
-      () => window.location.reload(),
-      () => {
-        clearSave();
-        window.location.reload();
+    this.panels.chapterEnd({
+      heading: t().end.heading,
+      next: nextChapter(this.chapterId),
+      onAgain: () => window.location.reload(),
+      onStart: () => {
+        window.location.search = '';
       },
-    );
+      onNext: () => {
+        const next = nextChapter(this.chapterId);
+        if (next) this.onLeaveToChapter?.(next);
+      },
+    });
   }
 
   private openPause(): void {

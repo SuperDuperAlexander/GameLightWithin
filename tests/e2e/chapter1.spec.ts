@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LAYOUT } from '../../src/content/chapter1';
-import { answerQuestions, call, snap, startChapter, waitForSnap, walkTo } from './helpers';
+import { answerQuestions, beginChapter, call, snap, startChapter, waitForSnap, walkTo } from './helpers';
 
 /**
  * A full run of chapter 1, from the start screen to the chapter end screen,
@@ -34,9 +34,9 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await startChapter(page, '/?autobreathe=1&debug=1&quality=low');
 
   // ---- start screen ----
-  await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible();
+  await expect(page.locator('button[data-chapter="1"]')).toBeVisible();
   await shot('scene0-start');
-  await page.getByRole('button', { name: 'Begin' }).click();
+  await beginChapter(page);
 
   // ---- the two opening questions ----
   await expect(page.getByText('Your answers stay on this device.')).toBeVisible();

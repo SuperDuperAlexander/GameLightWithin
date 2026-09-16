@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { beginChapter } from './helpers';
 
 /**
  * The game must never talk to the network. No analytics, no CDN, no fonts
@@ -16,7 +17,7 @@ test('makes no request to any outside origin', async ({ page, baseURL }) => {
 
   await page.goto('/?debug=1&autobreathe=1');
   await page.waitForFunction(() => document.body.dataset.ready === '1');
-  await page.getByRole('button', { name: 'Begin' }).click();
+  await beginChapter(page);
   for (const group of ['receive', 'calm']) {
     await page.locator(`[aria-label="${group}"] button[data-value="3"]`).click();
   }

@@ -93,6 +93,14 @@ export async function startChapter(page: Page, query: string): Promise<void> {
   await page.waitForFunction(() => document.body.dataset.ready === '1');
 }
 
+/**
+ * Clicks a chapter on the start screen. The button is found by its data
+ * attribute, so a change to the chapter's name does not break every test.
+ */
+export async function beginChapter(page: Page, id = 1): Promise<void> {
+  await page.locator(`button[data-chapter="${String(id)}"]`).click();
+}
+
 export async function answerQuestions(page: Page, value = 3): Promise<void> {
   for (const group of ['receive', 'calm']) {
     await page.locator(`[aria-label="${group}"] button[data-value="${value}"]`).click();

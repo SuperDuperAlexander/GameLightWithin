@@ -564,3 +564,19 @@ body.lw-touch .lw-key {
     text-align: center;
   }
 }
+
+/* The screen fade between chapters. The page reloads behind it. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: #0b0d12;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+  z-index: 100;
+}
+body.fading::after {
+  opacity: 1;
+  pointer-events: all;
+}

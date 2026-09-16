@@ -1,18 +1,28 @@
 import { SAVE_KEY, CHECKS_KEY, SETTINGS_KEY } from '../content/chapter1';
-import type { SceneId, RhythmPreset, QualityTier } from '../content/chapter1';
+import type { RhythmPreset, QualityTier, SceneId } from '../content/chapter1';
+import { CHAPTERS, CHAPTER_IDS } from '../content/chapters';
+import type { ChapterId } from '../content/chapters';
 
 export interface Answers {
   receive: number | null;
   calm: number | null;
 }
 
-export interface SaveData {
-  version: 1;
-  scene: SceneId;
+/** Where the player is inside one chapter. */
+export interface ChapterProgress {
+  scene: number;
   light: number;
+  completed: boolean;
+}
+
+export interface SaveData {
+  version: 2;
+  /** Progress per chapter, keyed by chapter number. */
+  chapters: Partial<Record<ChapterId, ChapterProgress>>;
+  /** The chapter the player was last in. */
+  current: ChapterId;
   startAnswers: Answers;
   endAnswers: Answers;
-  completed: boolean;
 }
 
 export interface LearningChecks {
@@ -37,13 +47,14 @@ export interface SettingsData {
 }
 
 export const DEFAULT_SAVE: SaveData = {
-  version: 1,
-  scene: 1,
-  light: 0,
+  version: 2,
+  chapters: {},
+  current: 1,
   startAnswers: { receive: null, calm: null },
   endAnswers: { receive: null, calm: null },
-  completed: false,
 };
+
+export const DEFAULT_PROGRESS: ChapterProgress = { scene: 1, light: 0, completed: false };
 
 export const DEFAULT_CHECKS: LearningChecks = {
   stoppedWithoutHint: false,
@@ -84,12 +95,112 @@ function write<T>(key: string, value: T): void {
   }
 }
 
+/** The shape written by the version 1 save, before chapters existed. */
+interface LegacySave {
+  version?: number;
+  scene?: number;
+  light?: number;
+  completed?: boolean;
+  startAnswers?: Answers;
+  endAnswers?: Answers;
+}
+
+/**
+ * Reads the save, moving a version 1 file into the per-chapter shape.
+ *
+ * A player part way through chapter 1 must not lose their walk because the
+ * save format grew a chapter around it.
+ */
 export function loadSave(): SaveData {
-  const data = read(SAVE_KEY, DEFAULT_SAVE);
-  // A stored scene outside 1..6 must not strand the player.
-  if (!Number.isInteger(data.scene) || data.scene < 1 || data.scene > 6) data.scene = 1;
-  data.light = Math.max(0, Math.min(12, Math.round(data.light ?? 0)));
+  const raw = read<SaveData & LegacySave>(SAVE_KEY, DEFAULT_SAVE as SaveData & LegacySave);
+  const data: SaveData = {
+    version: 2,
+    chapters: raw.chapters ?? {},
+    current: clampChapter(raw.current ?? 1),
+    startAnswers: raw.startAnswers ?? { receive: null, calm: null },
+    endAnswers: raw.endAnswers ?? { receive: null, calm: null },
+  };
+
+  // A version 1 file is recognised by its top-level scene, not by a missing
+  // chapters field: reading merges the default over the stored data, so
+  // chapters always exists by the time it gets here, empty.
+  const legacy = typeof raw.scene === 'number' && Object.keys(data.chapters).length === 0;
+  if (legacy) {
+    data.chapters[1] = {
+      scene: clampScene(raw.scene ?? 1, 1),
+      light: clampLight(raw.light ?? 0),
+      completed: raw.completed === true,
+    };
+    data.current = 1;
+  }
+
+  for (const id of CHAPTER_IDS) {
+    const progress = data.chapters[id];
+    if (!progress) continue;
+    progress.scene = clampScene(progress.scene, id);
+    progress.light = clampLight(progress.light);
+    progress.completed = progress.completed === true;
+  }
   return data;
+}
+
+function clampChapter(id: number): ChapterId {
+  return CHAPTER_IDS.includes(id as ChapterId) ? (id as ChapterId) : 1;
+}
+
+function clampScene(scene: number, chapter: ChapterId): number {
+  const max = Math.max(1, CHAPTERS[chapter].scenes);
+  if (!Number.isInteger(scene) || scene < 1 || scene > max) return 1;
+  return scene;
+}
+
+function clampLight(light: number): number {
+  return Math.max(0, Math.min(12, Math.round(light || 0)));
+}
+
+/** Progress inside one chapter, or a fresh start when there is none stored. */
+export function chapterProgress(save: SaveData, id: ChapterId): ChapterProgress {
+  return { ...DEFAULT_PROGRESS, ...save.chapters[id] };
+}
+
+/** Writes progress for one chapter without touching the others. */
+export function setChapterProgress(
+  save: SaveData,
+  id: ChapterId,
+  progress: Partial<ChapterProgress>,
+): SaveData {
+  save.chapters[id] = { ...chapterProgress(save, id), ...progress };
+  save.current = id;
+  return save;
+}
+
+/** True when the player has finished this chapter at least once. */
+export function isChapterComplete(save: SaveData, id: ChapterId): boolean {
+  return save.chapters[id]?.completed === true;
+}
+
+/**
+ * Which chapters the player may open from the start screen: every built one
+ * they have finished, plus the next one after those, plus chapter 1.
+ *
+ * `open` is the chapter the game is running right now. A chapter the player is
+ * already standing in is always offered, so a deep link into one does not show
+ * its own start screen with its own button greyed out.
+ */
+export function unlockedChapters(save: SaveData, open: ChapterId | null = null): ChapterId[] {
+  const out: ChapterId[] = [];
+  for (const id of CHAPTER_IDS) {
+    if (!CHAPTERS[id].built) continue;
+    if (
+      id === 1 ||
+      id === open ||
+      isChapterComplete(save, (id - 1) as ChapterId) ||
+      save.chapters[id]
+    ) {
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 export function saveSave(data: SaveData): void {

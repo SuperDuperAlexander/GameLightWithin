@@ -1,4 +1,6 @@
 import type { QualityTier, SceneId } from '../content/chapter1';
+import { CHAPTER_IDS } from '../content/chapters';
+import type { ChapterId } from '../content/chapters';
 
 export interface DebugFlags {
   /** `?debug=1` shows the debug panel. */
@@ -11,6 +13,23 @@ export interface DebugFlags {
   readonly noPaint: boolean;
   /** `?quality=low|medium|high` pins the tier instead of measuring it. */
   readonly quality: QualityTier | null;
+  /** `?chapter=N` opens a chapter directly. */
+  readonly chapter: ChapterId | null;
+  /** `?autoname=1` answers the naming panel correctly, for the browser tests. */
+  readonly autoName: boolean;
+  /** `?calm=0.2` forces the calm value, for testing mind seeds. */
+  readonly calm: number | null;
+}
+
+function readChapter(raw: string | null): ChapterId | null {
+  const n = Number(raw);
+  return CHAPTER_IDS.includes(n as ChapterId) ? (n as ChapterId) : null;
+}
+
+function readCalm(raw: string | null): number | null {
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
 }
 
 function readQuality(raw: string | null): QualityTier | null {
@@ -32,5 +51,8 @@ export function parseFlags(search: string): DebugFlags {
     autobreathe: p.get('autobreathe') === '1',
     noPaint: p.get('nopaint') === '1',
     quality: readQuality(p.get('quality')),
+    chapter: readChapter(p.get('chapter')),
+    autoName: p.get('autoname') === '1',
+    calm: readCalm(p.get('calm')),
   };
 }

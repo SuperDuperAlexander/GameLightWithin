@@ -6,7 +6,7 @@ test('the start screen works from the keyboard', async ({ page }) => {
   await page.waitForFunction(() => document.body.dataset.ready === '1');
 
   // The first control is focused when the panel opens.
-  const begin = page.getByRole('button', { name: 'Begin' });
+  const begin = page.locator('button[data-chapter="1"]');
   await expect(begin).toBeFocused();
 
   // Tab reaches every control in the panel.

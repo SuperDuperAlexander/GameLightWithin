@@ -1,7 +1,7 @@
 import { test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { LAYOUT } from '../../src/content/chapter1';
-import { call, snap, waitForSnap } from './helpers';
+import { beginChapter, call, snap, waitForSnap } from './helpers';
 
 /**
  * One screenshot per scene, on desktop and on mobile.
@@ -42,7 +42,7 @@ test.describe('scene screenshots', () => {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `screenshots/settings-${tag}.png` });
     await page.getByRole('button', { name: 'Back' }).click();
-    await page.getByRole('button', { name: 'Begin' }).click();
+    await beginChapter(page);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `screenshots/start-questions-${tag}.png` });
   });
