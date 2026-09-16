@@ -22,6 +22,8 @@ export interface Snapshot {
   breathPhase: string;
   breathsTotal: number;
   breathsCalm: number;
+  stride: number;
+  mist: number;
   butterflyShown: boolean;
 }
 

@@ -28,7 +28,15 @@ import { ManifestSystem } from './systems/manifest';
 import { ReceiveSystem } from './systems/receive';
 import { ThanksSystem } from './systems/thanks';
 import { TransformSystem } from './systems/transform';
-import { Butterfly, FogVolume, MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
+import {
+  Butterfly,
+  FogVolume,
+  MoteFlow,
+  Sprout,
+  SpringGlow,
+  WakingMist,
+  buildBird,
+} from './world/effects';
 import { terrainHeight } from './world/terrain';
 import { DebugPanel } from './ui/debug';
 import { Hud } from './ui/hud';
@@ -73,6 +81,9 @@ export class Chapter1 {
   private readonly sprout = new Sprout();
   private readonly bird = buildBird();
   private readonly butterfly = new Butterfly();
+  private readonly wakingMist = new WakingMist();
+  /** 0 clear, 1 thickest. Only matters before the first breath. */
+  private mist: number = PLAYER.wakingMistBase;
 
   private phase: Phase = 'start';
   private scene: SceneId = 1;
@@ -138,6 +149,7 @@ export class Chapter1 {
       this.bird,
       this.butterfly.group,
     );
+    this.game.world.player.group.add(this.wakingMist.group);
 
     this.fogVolume.group.position.set(
       LAYOUT.fog.x,
@@ -499,7 +511,7 @@ export class Chapter1 {
       if (this.game.input.pushPressed) this.onPush();
       if (this.game.input.interactPressed) this.onInteract();
       this.breath.update(dt, inHeld, outHeld, this.game.speed);
-      this.updateStride(dt);
+      this.updateStride(dt, walking);
       this.calm.update(dt, walking);
       this.checks.update(dt);
       this.runScene(dt, p.x, p.z);
@@ -509,6 +521,7 @@ export class Chapter1 {
     this.motes.update(dt, this.game.world.player.chestWorld(this.tmp));
     this.fogVolume.update(dt);
     this.sprout.update(dt);
+    this.wakingMist.update(dt);
     this.butterfly.update(dt);
     for (const glow of this.springGlows.values()) glow.update(dt);
 
@@ -546,14 +559,34 @@ export class Chapter1 {
    * The player's stride. They can set off at once, but heavily, as if not yet
    * awake. The first finished breath opens the stride up, and it stays open.
    */
-  private updateStride(dt: number): void {
-    const target = this.hasBreathed ? 1 : PLAYER.wakingWalkFactor;
+  /**
+   * The waking mist and the short stride that goes with it.
+   *
+   * The player may walk from the first second. Until their first finished
+   * breath they do it inside their own mist, with a short stride, and pushing
+   * on without stopping thickens it. One breath clears it for good.
+   */
+  private updateStride(dt: number, walking: boolean): void {
+    if (this.hasBreathed) {
+      this.mist = Math.max(0, this.mist - dt / PLAYER.wakingEaseSeconds);
+    } else if (walking) {
+      this.mist = Math.min(PLAYER.wakingMistMax, this.mist + PLAYER.wakingMistGainPerSecond * dt);
+    } else {
+      // Standing still lets it settle, so stopping already feels like relief.
+      this.mist = Math.max(PLAYER.wakingMistBase, this.mist - dt * 0.12);
+    }
+
+    // The thicker the mist, the shorter the stride. Never below the floor.
+    const target = this.hasBreathed
+      ? 1
+      : PLAYER.wakingWalkFactor + (1 - PLAYER.wakingWalkFactor) * (1 - this.mist) * 0.4;
     const step = dt / PLAYER.wakingEaseSeconds;
     this.stride =
       this.stride < target
         ? Math.min(target, this.stride + step)
         : Math.max(target, this.stride - step);
     this.game.strideFactor = this.stride;
+    this.wakingMist.setStrength(this.mist, PLAYER.wakingMistRadius);
   }
 
   /**
@@ -735,6 +768,8 @@ export class Chapter1 {
       breathsCalm: this.breathsCalm,
       wakeBreaths: this.wakeBreaths,
       speed: Number(this.game.speed.toFixed(3)),
+      stride: Number(this.stride.toFixed(3)),
+      mist: Number(this.mist.toFixed(3)),
       px: Number(this.game.world.playerPosition.x.toFixed(3)),
       pz: Number(this.game.world.playerPosition.z.toFixed(3)),
       yaw: Number(this.game.camera.yaw.toFixed(4)),
@@ -789,6 +824,14 @@ export class Chapter1 {
         return this.manifest.plant(paid, this.calm.get());
       }) as (...args: any[]) => unknown,
       setCalm: ((v: number) => this.calm.set(v)) as (...args: any[]) => unknown,
+      /** Clears the waking mist, so a test can measure the world behind it. */
+      clearMist: (() => {
+        this.hasBreathed = true;
+        this.mist = 0;
+        this.stride = 1;
+        this.game.strideFactor = 1;
+        this.wakingMist.setStrength(0, PLAYER.wakingMistRadius);
+      }) as (...args: any[]) => unknown,
       setGlobalColor: ((v: number) => {
         this.game.world.color.setGlobalTarget(v, 0.001);
       }) as (...args: any[]) => unknown,

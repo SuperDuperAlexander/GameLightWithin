@@ -90,8 +90,12 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 ## Accessibility
 
 - Rhythm presets: normal, slow, easy.
-- The player is never held still. They can walk from the first second, at a
-  reduced stride, and the first finished breath opens it up for good.
+- The player is never held still. They walk from the first second, but inside
+  their own mist and with a short stride, and pushing on without stopping
+  thickens it. One finished breath clears it for good. The penalty is something
+  you can see, which is the only kind worth having in a game with no failure.
+- On touch the two halves of the breath are one button per thumb: breathe in on
+  the left, breathe out on the right. Both are pressed, neither is sat on.
 - One breath uses two keys: hold space to breathe in, hold shift to breathe
   out. Letting go of a key is not an action; the out-breath is half the
   practice and needs its own press. On touch there are two buttons.
@@ -105,6 +109,13 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
   test measures this in greyscale.
 - All UI works with the keyboard. Visible focus states.
 - Text contrast meets WCAG AA (Web Content Accessibility Guidelines, level AA).
+
+## Build stamp
+
+The start screen shows the git commit the build came from. Three times running,
+a change was reported as done and the game on the other screen was an older
+build. If the stamp does not match what was just shipped, the build is old,
+whatever anyone believes.
 
 ## Debug
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PALETTE } from '../content/palette';
-import { makeRng } from '../core/math';
+import { clamp01, makeRng } from '../core/math';
 import { toonMaterial } from '../render/materials';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
@@ -242,6 +242,98 @@ export class FogVolume {
     const p = this.puffs[Math.floor(Math.random() * this.puffs.length)];
     if (!p) return out.copy(this.group.position);
     return out.copy(p.mesh.position).multiplyScalar(this.group.scale.x).add(this.group.position);
+  }
+}
+
+/**
+ * The mist the player wakes inside.
+ *
+ * The player is never stopped from walking. Instead they set off inside their
+ * own weather: the valley is close and dim, their stride is short, and the
+ * longer they push on without stopping the thicker it gets. One finished
+ * breath clears it for good. The penalty is something you can see, which is
+ * the only kind worth having in a game with no score and no failure.
+ */
+export class WakingMist {
+  readonly group = new THREE.Group();
+  private readonly material: THREE.ShaderMaterial;
+  private readonly puffs: { mesh: THREE.Mesh; base: THREE.Vector3; phase: number }[] = [];
+  private time = 0;
+
+  constructor() {
+    this.material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(PALETTE.skyGrey) },
+        uStrength: { value: 1 },
+        uTime: { value: 0 },
+      },
+      vertexShader: `
+        precision highp float;
+        varying vec3 vN; varying vec3 vV; varying vec3 vL;
+        void main() {
+          vec4 w = modelMatrix * vec4(position, 1.0);
+          vN = normalize(mat3(modelMatrix) * normal);
+          vV = normalize(cameraPosition - w.xyz);
+          vL = position;
+          gl_Position = projectionMatrix * viewMatrix * w;
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        varying vec3 vN; varying vec3 vV; varying vec3 vL;
+        uniform vec3 uColor; uniform float uStrength; uniform float uTime;
+        void main() {
+          // Soft everywhere and softest at the silhouette, so a bank of these
+          // reads as mist instead of a row of bubbles.
+          float facing = abs(dot(normalize(vN), normalize(vV)));
+          float soft = pow(facing, 0.7);
+          float roll = 0.84 + 0.16 * sin(uTime * 0.5 + vL.y * 1.7 + vL.x);
+          gl_FragColor = vec4(uColor, clamp(soft * roll * uStrength * 0.3, 0.0, 0.5));
+        }
+      `,
+    });
+
+    // A ring of low puffs around the player, thickest at knee height, so the
+    // sky stays open and the world ahead just goes soft.
+    const geo = new THREE.SphereGeometry(1, 12, 9);
+    const rng = makeRng(31337);
+    for (let i = 0; i < 12; i++) {
+      const mesh = new THREE.Mesh(geo, this.material);
+      const a = (i / 12) * Math.PI * 2 + rng() * 0.5;
+      const r = 0.45 + rng() * 0.4;
+      const base = new THREE.Vector3(Math.cos(a) * r, 0.1 + rng() * 0.28, Math.sin(a) * r);
+      mesh.position.copy(base);
+      const size = 0.34 + rng() * 0.26;
+      mesh.scale.set(size, size * 0.6, size);
+      this.puffs.push({ mesh, base, phase: rng() * Math.PI * 2 });
+      this.group.add(mesh);
+    }
+    this.group.name = 'wakingMist';
+  }
+
+  /** @param value 0 clear, 1 thickest. */
+  setStrength(value: number, radius: number): void {
+    const strength = clamp01(value);
+    this.group.visible = strength > 0.01;
+    this.group.scale.setScalar(radius);
+    const u = this.material.uniforms.uStrength;
+    if (u) u.value = strength;
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    const u = this.material.uniforms.uTime;
+    if (u) u.value = this.time;
+    for (const p of this.puffs) {
+      p.mesh.position.set(
+        p.base.x + Math.sin(this.time * 0.2 + p.phase) * 0.07,
+        p.base.y + Math.sin(this.time * 0.29 + p.phase * 1.4) * 0.03,
+        p.base.z + Math.cos(this.time * 0.17 + p.phase) * 0.07,
+      );
+    }
   }
 }
 

@@ -170,6 +170,15 @@ export const PLAYER = {
   wakingWalkFactor: 0.4,
   /** Seconds the stride takes to open up after that first breath. */
   wakingEaseSeconds: 2.5,
+  /** Radius of the mist the player wakes inside, in metres. */
+  wakingMistRadius: 9,
+  /**
+   * Pushing on without stopping thickens the mist by this much per second,
+   * up to the cap. Stopping lets it settle back. It is a nudge, never a wall.
+   */
+  wakingMistGainPerSecond: 0.05,
+  wakingMistMax: 1,
+  wakingMistBase: 0.34,
   /** How fast the player turns toward the movement direction, radians per second. */
   turnSpeed: 7,
   /** Slopes steeper than this cosine are not walkable. */

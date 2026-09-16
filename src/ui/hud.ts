@@ -125,13 +125,11 @@ export class Hud {
       this.hint,
       el('div', { class: 'lw-corner' }, pauseBtn),
       joystick,
-      el(
-        'div',
-        { class: 'lw-touch-right' },
-        this.pushBtn,
-        this.interactBtn,
-        el('div', { class: 'lw-breath-pair' }, this.breathOutBtn, this.breathInBtn),
-      ),
+      // One button per thumb. The in-breath sits on the left with the
+      // joystick, the out-breath on the right: both halves are something you
+      // press, and neither is something you sit on and watch.
+      el('div', { class: 'lw-touch-left' }, this.breathInBtn),
+      el('div', { class: 'lw-touch-right' }, this.pushBtn, this.interactBtn, this.breathOutBtn),
     );
     this.joystickZone = joystick;
   }

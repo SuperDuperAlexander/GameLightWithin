@@ -18,6 +18,7 @@ export interface GameStrings {
     readonly settings: string;
     readonly back: string;
     readonly subtitle: string;
+    readonly version: string;
   };
   readonly questions: {
     readonly heading: string;
@@ -117,6 +118,7 @@ export const en: GameStrings = {
     settings: 'Settings',
     back: 'Back',
     subtitle: 'A quiet walk in a grey valley.',
+    version: 'Build',
   },
   questions: {
     heading: 'Two questions before you start',

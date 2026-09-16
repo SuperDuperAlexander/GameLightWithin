@@ -57,6 +57,9 @@ export class Panels {
       el('h1', { class: 'lw-title' }, GAME_TITLE),
       el('p', { class: 'lw-sub' }, s.start.subtitle),
     );
+    // The build stamp. If this does not match what was just shipped, the game
+    // being looked at is an older build.
+    panel.append(el('p', { class: 'lw-build' }, `${s.start.version} ${__BUILD_STAMP__}`));
     const row = el('div', { class: 'lw-row' });
     row.append(button(s.start.begin, 'lw-btn', this.tap(onBegin)));
     if (hasSave) row.append(button(s.pause.resume, 'lw-btn lw-btn--quiet', this.tap(onContinue)));
