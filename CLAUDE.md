@@ -59,8 +59,17 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
   (trunk plus clustered soft blobs), a stone spring basin, a sign stone, a bridge.
 - Grass and flowers are camera-facing cards with procedural brush-stroke alpha.
 - Sky is a large dome with a painted gradient and soft cloud strokes from noise.
-- Light is baked into vertex colours or the shader. One soft directional light.
-  A blob shadow under the player, not a real-time shadow map.
+- Light is baked into vertex colours or the shader, plus one soft directional
+  light. That light casts a real shadow map on the medium and high tiers: the
+  map covers a box that follows the player and is snapped to whole texels, so
+  it stays sharp and does not crawl. The low tier falls back to the blob shadow
+  under the player. Grass never takes part in the shadow pass; 60,000
+  alpha-tested cards would cost more than the rest of the valley together.
+- Air is never empty. Pollen drifts in a box that repeats around the camera, so
+  the player cannot walk out of the weather and nothing moves on the processor.
+- The player's walk is made from the movement itself: the body rises and falls
+  twice per stride, rolls, and leans into the direction of travel. The phase
+  follows distance, not time, so the step matches the speed.
 - Painting filter: Kuwahara-style, plus procedural paper grain and a soft vignette.
 - Grey-to-colour: every world material shares one shader chunk. A uniform array
   holds restored zones (centre, radius, strength). Inside a zone the material

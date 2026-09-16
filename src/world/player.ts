@@ -16,6 +16,12 @@ export class PlayerFigure {
   private readonly moteMeshes: THREE.Mesh[] = [];
   private moteTime = 0;
   private glowAmount = 0;
+  /** Advances with distance walked, so the step never changes with frame rate. */
+  private walkPhase = 0;
+  /** 0 standing, 1 walking at full stride. */
+  private gait = 0;
+  private readonly body = new THREE.Group();
+  private readonly hem: THREE.Mesh;
 
   constructor() {
     this.group.name = 'player';
@@ -28,21 +34,21 @@ export class PlayerFigure {
     // Rounded body, wider at the hem so it reads as a cloak.
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.52, 1.1, 12, 1), cloak);
     torso.position.y = 0.58;
-    this.group.add(torso);
+    this.body.add(torso);
 
     const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), cloak);
     shoulders.position.y = 1.12;
     shoulders.scale.set(1, 0.72, 0.9);
-    this.group.add(shoulders);
+    this.body.add(shoulders);
 
     // A small, faceless head.
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 12), body);
     head.position.y = 1.47;
-    this.group.add(head);
+    this.body.add(head);
 
-    const hem = new THREE.Mesh(new THREE.ConeGeometry(0.56, 0.42, 12, 1, true), cloak);
-    hem.position.y = 0.21;
-    this.group.add(hem);
+    this.hem = new THREE.Mesh(new THREE.ConeGeometry(0.56, 0.42, 12, 1, true), cloak);
+    this.hem.position.y = 0.21;
+    this.body.add(this.hem);
 
     // The soft glow that shows calm. It is additive so it never darkens anything.
     this.glow = new THREE.Mesh(
@@ -81,6 +87,9 @@ export class PlayerFigure {
         `,
       }),
     );
+    this.group.add(this.body);
+    for (const part of this.body.children) part.castShadow = true;
+
     this.glow.position.y = 0.9;
     this.glow.renderOrder = 2;
     this.group.add(this.glow);
@@ -123,6 +132,11 @@ export class PlayerFigure {
     this.group.position.set(x, y, z);
   }
 
+  /** The blob shadow is only used when the tier has no real shadows. */
+  setBlobShadow(on: boolean): void {
+    this.shadow.visible = on;
+  }
+
   setFacing(angle: number): void {
     this.group.rotation.y = angle;
   }
@@ -145,7 +159,11 @@ export class PlayerFigure {
     }
   }
 
-  update(dt: number, groundY: number): void {
+  /**
+   * @param speed the player's ground speed in metres per second
+   */
+  update(dt: number, groundY: number, speed = 0): void {
+    this.animateWalk(dt, speed);
     this.moteTime += dt;
     const visible = this.moteMeshes.filter((m) => m.visible).length;
     for (let i = 0; i < visible; i++) {
@@ -161,6 +179,32 @@ export class PlayerFigure {
       mote.scale.setScalar(0.85 + Math.sin(this.moteTime * 2.4 + i) * 0.16);
     }
     this.shadow.position.y = groundY - this.group.position.y + 0.04;
+  }
+
+  /**
+   * A walk, made from the movement itself rather than from a clip.
+   *
+   * The body rises and falls twice per stride, rolls a little from side to
+   * side, and leans into the direction of travel. Without it the figure slides
+   * over the ground like a chess piece, which undoes everything the rest of
+   * the scene is doing.
+   */
+  private animateWalk(dt: number, speed: number): void {
+    // The phase follows distance, not time, so the step matches the speed.
+    this.walkPhase += speed * dt * 2.6;
+    const want = clamp01(speed / 3);
+    this.gait += (want - this.gait) * Math.min(1, dt * 8);
+
+    const bob = Math.sin(this.walkPhase * 2) * 0.055 * this.gait;
+    const roll = Math.sin(this.walkPhase) * 0.07 * this.gait;
+    const lean = 0.1 * this.gait;
+
+    this.body.position.y = bob;
+    this.body.rotation.z = roll;
+    this.body.rotation.x = lean;
+    // The hem swings a beat behind the body, so the cloak has some weight.
+    this.hem.rotation.z = -roll * 0.6;
+    this.hem.position.x = Math.sin(this.walkPhase - 0.6) * 0.03 * this.gait;
   }
 
   /** Where a light mote should fly to. */

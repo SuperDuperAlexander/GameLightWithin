@@ -9,6 +9,7 @@ export interface QualitySettings {
   readonly paintScale: number;
   readonly grassCards: number;
   readonly grassFade: number;
+  readonly shadowMap: number;
   readonly particles: number;
   readonly skyStrokes: number;
   readonly treeBlobs: number;

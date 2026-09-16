@@ -195,6 +195,17 @@ export const CAMERA = {
   dragSensitivity: 0.0055,
 } as const;
 
+export const SHADOW = {
+  /** Side of the shadow box that follows the player, in metres. */
+  boxSize: 56,
+  near: 1,
+  far: 180,
+  /** How far up the light sits along its own direction. */
+  distance: 70,
+  bias: -0.0012,
+  normalBias: 0.05,
+} as const;
+
 export const WORLD = {
   /** Half size of the playable valley in metres. */
   halfWidth: 60,
@@ -280,27 +291,31 @@ export const QUALITY = {
 export const TIERS = {
   low: {
     paintScale: 0.5,
-    grassCards: 7000,
-    grassFade: 24,
+    grassCards: 16000,
+    grassFade: 28,
     particles: 40,
     skyStrokes: 5,
-    treeBlobs: 4,
+    treeBlobs: 5,
+    /** Shadow map size in pixels. 0 turns real shadows off. */
+    shadowMap: 0,
   },
   medium: {
     paintScale: 0.75,
-    grassCards: 13000,
-    grassFade: 36,
-    particles: 90,
+    grassCards: 34000,
+    grassFade: 42,
+    particles: 120,
     skyStrokes: 8,
-    treeBlobs: 6,
+    treeBlobs: 7,
+    shadowMap: 1024,
   },
   high: {
     paintScale: 1.0,
-    grassCards: 24000,
-    grassFade: 48,
-    particles: 160,
+    grassCards: 60000,
+    grassFade: 58,
+    particles: 240,
     skyStrokes: 12,
-    treeBlobs: 8,
+    treeBlobs: 9,
+    shadowMap: 2048,
   },
 } as const;
 

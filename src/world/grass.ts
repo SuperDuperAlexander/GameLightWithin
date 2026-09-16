@@ -107,7 +107,12 @@ export function buildGrass(count: number): THREE.Mesh {
         float lean = sin(vPhase * 3.7) * 0.5;
         float bend = uv.y * uv.y;
         local.x += lean * bend * aParams.y;
-        float sway = sin(uTime * 1.35 + vPhase + aOffset.x * 0.35) * 0.12;
+        // Wind waves travel across the field, so whole bands of grass lean
+        // together and the meadow reads as moving rather than twitching.
+        float wave = sin(aOffset.x * 0.13 + aOffset.z * 0.08 - uTime * 1.05);
+        float wave2 = sin(aOffset.x * 0.29 - aOffset.z * 0.2 - uTime * 0.62);
+        float gust = wave * 0.62 + wave2 * 0.38;
+        float sway = sin(uTime * 1.35 + vPhase + aOffset.x * 0.35) * 0.09 + gust * 0.2;
         // A soft wind pushes out from the fog while the player feels it.
         vec2 away = aOffset.xz - uWind.xy;
         float d = length(away);

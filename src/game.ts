@@ -90,6 +90,9 @@ export class Game {
     this.renderer.setPixelRatio(pixelRatioCap());
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.setClearColor(0xcfd2d6, 1);
+    // Soft shadow edges. The map itself is sized by the quality tier.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   async start(): Promise<void> {
@@ -202,6 +205,7 @@ export class Game {
     // The chapter runs every step, even while a panel is open, so the world
     // keeps drawing behind it. The chapter itself decides what may advance.
     this.onFrame?.(dt, this.time);
+    this.world.playerSpeed = this.speed;
     this.world.update(
       dt,
       this.calm,

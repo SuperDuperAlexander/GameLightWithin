@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { LAYOUT, PLAYER, TIERS } from '../content/chapter1';
+import { LAYOUT, PLAYER, SHADOW, TIERS } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import type { QualitySettings } from '../core/quality';
 import { ColorRestoreState, colorUniforms } from '../render/colorRestore';
+import { buildAtmosphere, updateAtmosphere } from './atmosphere';
 import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
 import { PlayerFigure } from './player';
@@ -31,6 +32,7 @@ export class World {
   readonly bridge: THREE.Group;
   private readonly sky: THREE.Mesh;
   private readonly grass: THREE.Mesh;
+  private readonly atmosphere: THREE.Points;
   private readonly terrainMesh: THREE.Mesh;
   private readonly bridgeDeck: THREE.Mesh;
   /** The bridge's own colours, kept so the golden blend stays reversible. */
@@ -38,6 +40,12 @@ export class World {
   private bridgeGold = -1;
   private clock = 0;
   private readonly haze: THREE.Fog;
+  private readonly sun: THREE.DirectionalLight;
+  /** The direction the light comes from, kept so the shadow box can follow. */
+  private readonly sunDir = new THREE.Vector3(38, 44, -62).normalize();
+  private shadowTexelSize = 0;
+  /** The chapter writes the player's ground speed here for the walk cycle. */
+  playerSpeed = 0;
 
   constructor(quality: QualitySettings) {
     const terrain = buildTerrain();
@@ -49,12 +57,23 @@ export class World {
     this.sky = buildSky(quality.skyStrokes);
     this.scene.add(this.sky);
 
-    // One soft directional light plus an ambient fill. No shadow maps.
+    // One soft directional light plus an ambient fill.
     // The light stays near neutral so the valley reads grey at the start; the
     // warmth comes from the grey-to-colour system, not from the lamp.
-    const sun = new THREE.DirectionalLight(0xfff6e6, 1.9);
-    sun.position.set(38, 44, -62);
-    this.scene.add(sun);
+    this.sun = new THREE.DirectionalLight(0xfff6e6, 1.9);
+    this.sun.position.set(38, 44, -62);
+    this.sun.castShadow = false;
+    this.sun.shadow.bias = SHADOW.bias;
+    this.sun.shadow.normalBias = SHADOW.normalBias;
+    const cam = this.sun.shadow.camera;
+    cam.near = SHADOW.near;
+    cam.far = SHADOW.far;
+    cam.left = -SHADOW.boxSize / 2;
+    cam.right = SHADOW.boxSize / 2;
+    cam.top = SHADOW.boxSize / 2;
+    cam.bottom = -SHADOW.boxSize / 2;
+    cam.updateProjectionMatrix();
+    this.scene.add(this.sun, this.sun.target);
     this.scene.add(
       new THREE.HemisphereLight(
         new THREE.Color(PALETTE.skyGrey),
@@ -72,6 +91,9 @@ export class World {
     // effect at once instead of needing the world rebuilt.
     this.grass = buildGrass(TIERS.high.grassCards);
     this.scene.add(this.grass);
+
+    this.atmosphere = buildAtmosphere(TIERS.high.particles);
+    this.scene.add(this.atmosphere);
     this.applyQuality(quality);
 
     for (const [id, spot] of [
@@ -112,6 +134,32 @@ export class World {
 
     this.scene.add(this.player.group);
 
+    // Who casts and who receives. The ground only receives, the props do both,
+    // and the grass does neither: 60,000 alpha-tested cards in a shadow pass
+    // would cost more than every other thing in the valley put together.
+    terrain.mesh.receiveShadow = true;
+    terrain.chasm.traverse((o) => (o.receiveShadow = true));
+    props.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+    for (const basin of this.springAnchors.values()) {
+      basin.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+      });
+    }
+    this.bridge.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+
     // Aerial perspective. Distant ground fades into the sky, which is what
     // gives an open valley its depth. The colour follows the sky as the valley
     // returns to colour, so the haze never stays a cold grey over warm hills.
@@ -136,6 +184,52 @@ export class World {
   /** Applies a quality tier to everything that can change during play. */
   applyQuality(quality: QualitySettings): void {
     setGrassDensity(this.grass, quality.grassCards, quality.grassFade);
+    this.setShadows(quality.shadowMap);
+    // The specks are drawn from the front of the buffer, so a lower tier just
+    // draws fewer of them.
+    this.atmosphere.geometry.setDrawRange(0, quality.particles);
+  }
+
+  /**
+   * Turns real shadows on at the given map size, or off when it is zero.
+   *
+   * Shadows are what tell the eye where a thing sits on the ground. Without
+   * them a tree is a shape floating in front of a meadow. The map covers only
+   * a box around the player, so it stays sharp however big the valley is.
+   */
+  setShadows(mapSize: number): void {
+    const on = mapSize > 0;
+    this.sun.castShadow = on;
+    // The blob shadow stands in for the real one on the cheapest tier.
+    this.player.setBlobShadow(!on);
+    if (!on) return;
+    if (this.sun.shadow.mapSize.width !== mapSize) {
+      this.sun.shadow.mapSize.set(mapSize, mapSize);
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.shadowTexelSize = SHADOW.boxSize / mapSize;
+  }
+
+  /**
+   * Keeps the shadow box over the player.
+   *
+   * The centre is snapped to whole shadow texels. Without that the shadows
+   * crawl and shimmer with every step, which is far more distracting than
+   * having no shadows at all.
+   */
+  private followShadow(target: THREE.Vector3): void {
+    if (!this.sun.castShadow) return;
+    const step = this.shadowTexelSize || 1;
+    const cx = Math.round(target.x / step) * step;
+    const cz = Math.round(target.z / step) * step;
+    this.sun.target.position.set(cx, target.y, cz);
+    this.sun.position.set(
+      cx + this.sunDir.x * SHADOW.distance,
+      target.y + this.sunDir.y * SHADOW.distance,
+      cz + this.sunDir.z * SHADOW.distance,
+    );
+    this.sun.target.updateMatrixWorld();
   }
 
   /** The height the player's feet rest at, or null where there is no ground. */
@@ -171,10 +265,12 @@ export class World {
     this.haze.color.copy(COLD_RIM).lerp(HAZE_WARM, this.color.globalColor);
     updateSky(this.sky, this.clock);
     updateGrass(this.grass, this.clock, windStrength, windRadius, fogX, fogZ);
+    updateAtmosphere(this.atmosphere, this.clock, this.player.group.position);
+    this.followShadow(this.player.group.position);
     this.player.setGlow(calm);
     this.player.setLight(light);
     const gy = this.groundAt(this.player.group.position.x, this.player.group.position.z);
-    this.player.update(dt, gy ?? this.player.group.position.y);
+    this.player.update(dt, gy ?? this.player.group.position.y, this.playerSpeed);
     // The sky dome follows the camera so it never runs out.
     this.sky.position.copy(this.player.group.position);
   }
