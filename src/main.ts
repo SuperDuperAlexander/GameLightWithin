@@ -6,12 +6,17 @@ import { chapterUrl, pickChapter } from './core/router';
 import type { ChapterRunner } from './core/chapterRunner';
 import type { ChapterId } from './content/chapters';
 import { Game } from './game';
+import { setPlace } from './world/place';
+import { meadows } from './world/meadows';
+import { valley } from './world/valley';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('missing #app');
 
 const flags = parseFlags(window.location.search);
 const chapterId = pickChapter(flags);
+// The place is set before the world is built. One page load is one place.
+setPlace(chapterId === 2 ? meadows : valley);
 const game = new Game(root, flags);
 
 /**

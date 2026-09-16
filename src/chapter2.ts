@@ -1,10 +1,28 @@
-import { CHAPTER2, SCENE2_STARTS } from './content/chapter2';
-import type { Scene2Id } from './content/chapter2';
+import * as THREE from 'three';
+import { CALM, RECEIVE } from './content/chapter1';
+import {
+  BODY,
+  CHAPTER2,
+  LAYOUT2,
+  NIGHT,
+  RAIN,
+  SCENE2_STARTS,
+  SEEDS2,
+  SINGING_STONE,
+  SOUND_BREATH,
+  SPRING2,
+  STORM,
+  WEATHER,
+  WORLD2,
+} from './content/chapter2';
+import { HINTS2 } from './content/chapter2';
+import type { FeelingType, Scene2Id } from './content/chapter2';
 import { CHAPTERS, isLastChapter, nextChapter } from './content/chapters';
 import type { ChapterId } from './content/chapters';
 import { t } from './content/strings.en';
 import { AudioEngine } from './audio/audio';
 import type { Game } from './game';
+import { clamp01, dist2d, makeRng } from './core/math';
 import type { SettingsData } from './core/save';
 import {
   chapterProgress,
@@ -19,48 +37,105 @@ import {
 import type { ChapterRunner } from './core/chapterRunner';
 
 import { BreathSystem } from './systems/breath';
+import { BodySystem } from './systems/body';
 import { CalmSystem } from './systems/calm';
 import { ChecksSystem } from './systems/checks';
+import { HintSystem } from './systems/hints';
 import { LightSystem } from './systems/light';
+import { ReceiveSystem } from './systems/receive';
+import { LightWell, SeedSpot } from './systems/seeds2';
+import { SoundBreathSystem } from './systems/soundBreath';
+import { StormSystem } from './systems/storm';
+import { ThanksSystem } from './systems/thanks';
+import { FeelingWeather, shuffledFeelings } from './systems/weather';
+import { MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
+import { height as groundHeight } from './world/place';
+import { Rainbow, ToneRings, WeatherView } from './world/weatherView';
 import { DebugPanel } from './ui/debug';
+import { DreamView } from './ui/dream';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
-type Phase = 'start' | 'playing' | 'reflect' | 'understand' | 'apply' | 'endQuestions' | 'end';
+type Phase =
+  | 'start'
+  | 'playing'
+  | 'naming'
+  | 'dream'
+  | 'reflect'
+  | 'understand'
+  | 'apply'
+  | 'endQuestions'
+  | 'end';
 
 /**
  * Chapter 2 "Be aware". The player goes inside, feels what is there, and
  * gives it a name.
  *
- * This class owns the same three things chapter 1 owns: the screens around the
- * play, the six scenes, and the learning cycle after them. What it does not
- * own is the breath, the calm and the light: those are the game's, not a
- * chapter's, and they are the same systems chapter 1 uses.
+ * Like chapter 1, every mechanic runs every frame wherever the player is
+ * standing. The scene number only records how far they have come. The
+ * meadows are one open place and the player may meet the rain cloud before
+ * the body stones if that is where their feet took them.
  */
 export class Chapter2 implements ChapterRunner {
   private readonly bus;
   private readonly breath: BreathSystem;
   private readonly calm: CalmSystem;
   private readonly light: LightSystem;
-  private readonly checks = new ChecksSystem();
+  private readonly receive: ReceiveSystem;
+  private readonly body: BodySystem;
+  private readonly sound: SoundBreathSystem;
+  private readonly storm: StormSystem;
+  private readonly seedA: SeedSpot;
+  private readonly seedB: SeedSpot;
+  private readonly well: LightWell;
+  private readonly thanks: ThanksSystem;
+  private readonly hints: HintSystem;
+  private readonly checks = new ChecksSystem(2);
   private readonly audio: AudioEngine;
   private readonly hud: Hud;
   private readonly panels = new Panels();
+  private readonly dream = new DreamView();
   private readonly debug: DebugPanel | null;
+
+  private readonly motes: MoteFlow;
+  private readonly springGlow = new SpringGlow();
+  private readonly wellGlow = new SpringGlow();
+  private readonly rainbow = new Rainbow();
+  private readonly toneRings = new ToneRings(SOUND_BREATH.ringRadius);
+  private readonly bird = buildBird();
+  private readonly sproutA = new Sprout();
+  private readonly sproutB = new Sprout();
+  /** The rain cloud of scene 3, and its view. */
+  private readonly cloud: FeelingWeather;
+  private readonly cloudView: WeatherView;
+  private readonly stormView: WeatherView;
 
   private phase: Phase = 'start';
   private scene: Scene2Id = 1;
   private settings: SettingsData;
   private save = loadSave();
-  /** This chapter's own slot in the save file. */
   private readonly chapterId = 2 as const;
-  /** The router sets this so a chapter can hand over to another one. */
   onLeaveToChapter: ((id: ChapterId) => void) | null = null;
-  /** Automatic calm breathing for the browser tests. */
+
+  /** The weather the naming panel is open for. */
+  private naming: FeelingWeather | null = null;
+  private readonly rng = makeRng(20260917);
+  /** Scene 3 runs to its own step: 0 waiting, 1 named, 2 felt, 3 let go. */
+  private rainStep: 0 | 1 | 2 | 3 = 0;
+  private rainBreaths = 0;
+  private rainbowTime = 0;
+  /** Seconds since the chapter began, for the slow day. */
+  private clock = 0;
+  /** 0 day, 1 night. Scene 6 turns it up. */
+  private night = 0;
+  private dreamTime = 0;
+  /** Seconds the singing stone has been standing with the player. */
+  private stoneNear = 0;
   private autoClock = 0;
-  /** Counters the browser tests read. They are never shown to the player. */
   private breathsTotal = 0;
   private breathsCalm = 0;
+  private hasBreathed = false;
+  private readonly tmp = new THREE.Vector3();
 
   constructor(private readonly game: Game) {
     this.bus = game.bus;
@@ -70,22 +145,56 @@ export class Chapter2 implements ChapterRunner {
     this.breath.setPreset(this.settings.rhythm);
     this.calm = new CalmSystem(this.bus);
     this.light = new LightSystem(this.bus);
+    this.receive = new ReceiveSystem(this.bus, [
+      {
+        id: 'spring',
+        x: LAYOUT2.spring.x,
+        z: LAYOUT2.spring.z,
+        light: SPRING2.light,
+        hidden: false,
+      },
+    ]);
+    this.body = new BodySystem(this.bus, LAYOUT2.bodyStones);
+    this.sound = new SoundBreathSystem(this.bus);
+    this.storm = new StormSystem(this.bus, LAYOUT2.storm);
+    this.seedA = new SeedSpot(
+      this.bus,
+      'A',
+      LAYOUT2.seedA.x,
+      LAYOUT2.seedA.z,
+      SEEDS2.windyCalmDecayFactor,
+    );
+    this.seedB = new SeedSpot(this.bus, 'B', LAYOUT2.seedB.x, LAYOUT2.seedB.z);
+    this.well = new LightWell(this.bus, LAYOUT2.lightWell.x, LAYOUT2.lightWell.z);
+    this.thanks = new ThanksSystem(this.bus, { x: LAYOUT2.seedB.x, z: LAYOUT2.seedB.z });
+    this.hints = new HintSystem(this.bus, HINTS2.birdAfterSeconds);
     this.audio = new AudioEngine(this.bus);
+
+    this.cloud = new FeelingWeather({
+      type: 'sadness',
+      x: LAYOUT2.rain.x,
+      z: LAYOUT2.rain.z,
+      intensity: RAIN.startIntensity,
+      size: 4.5,
+      followsPlayer: true,
+    });
+    this.cloudView = new WeatherView('sadness', 4.5);
+    this.stormView = new WeatherView('anger', LAYOUT2.storm.radius);
 
     this.hud = new Hud(
       this.game.input,
       () => this.openPause(),
-      () => {
-        /* the storm push is wired in C2-M4 */
-      },
-      () => {
-        /* the seed choice is wired in C2-M5 */
-      },
+      () => this.onPush(),
+      () => this.onInteract(),
       CHAPTERS[this.chapterId].circleStrength,
     );
     this.hud.breathCircle.reducedMotion = this.settings.reducedMotion;
     this.debug = game.flags.debug ? new DebugPanel(() => this.checks.toJson()) : null;
 
+    this.motes = new MoteFlow(24);
+    // The meadows are already partly in colour when the player arrives.
+    this.game.world.color.setGlobalTarget(CHAPTER2.startColor, 0);
+    this.buildSceneObjects();
     this.mountUi();
     this.wireEvents();
     this.applySettings(this.settings, false);
@@ -93,8 +202,56 @@ export class Chapter2 implements ChapterRunner {
 
   // ---------- setup ----------
 
+  private buildSceneObjects(): void {
+    const scene = this.game.world.scene;
+    scene.add(
+      this.motes.group,
+      this.springGlow.mesh,
+      this.wellGlow.mesh,
+      this.cloudView.group,
+      this.stormView.group,
+      this.rainbow.group,
+      this.toneRings.group,
+      this.sproutA.group,
+      this.sproutB.group,
+      this.bird,
+    );
+
+    const spring = this.game.world.anchors.get('spring');
+    if (spring) {
+      this.springGlow.mesh.position.set(
+        spring.position.x,
+        spring.position.y + 1,
+        spring.position.z,
+      );
+    }
+    const well = this.game.world.anchors.get('lightWell');
+    if (well) {
+      this.wellGlow.mesh.position.set(well.position.x, well.position.y + 0.9, well.position.z);
+    }
+
+    for (const [sprout, spot] of [
+      [this.sproutA, LAYOUT2.seedA],
+      [this.sproutB, LAYOUT2.seedB],
+    ] as const) {
+      sprout.group.position.set(spot.x, groundHeight(spot.x, spot.z), spot.z);
+    }
+
+    this.stormView.group.position.set(
+      LAYOUT2.storm.x,
+      groundHeight(LAYOUT2.storm.x, LAYOUT2.storm.z),
+      LAYOUT2.storm.z,
+    );
+    this.bird.position.set(
+      LAYOUT2.bird.x,
+      groundHeight(LAYOUT2.bird.x, LAYOUT2.bird.z) + 0.17,
+      LAYOUT2.bird.z,
+    );
+    this.bird.visible = false;
+  }
+
   private mountUi(): void {
-    this.game.root.append(this.hud.root, this.panels.root);
+    this.game.root.append(this.hud.root, this.dream.root, this.panels.root);
     if (this.debug) this.game.root.append(this.debug.root);
     this.panels.onOpenChanged = (open): void => {
       this.game.setPaused(open);
@@ -107,18 +264,45 @@ export class Chapter2 implements ChapterRunner {
   private wireEvents(): void {
     // The calm value follows the breath on its own, inside CalmSystem.
     this.bus.on('breathCompleted', (e) => {
+      this.hasBreathed = true;
       this.breathsTotal++;
-      if (!e.calm) return;
-      this.breathsCalm++;
-      this.bus.emit('cue', { id: 'calmBreath' });
-      this.hud.breathCircle.pulse();
+      if (e.calm) {
+        this.breathsCalm++;
+        this.bus.emit('cue', { id: 'calmBreath' });
+        this.hud.breathCircle.pulse();
+      }
+      this.onBreathCompleted(e.calm, e.exhale);
     });
     this.bus.on('zoneAdded', ({ x, z, radius }) => this.game.world.color.addZone(x, z, radius));
+    this.bus.on('lightCollected', ({ from, amount }) => this.onLightCollected(from, amount));
+    this.bus.on('bodyPointLit', ({ point }) => {
+      this.game.world.player.setBodyPoint(point, 1);
+      this.light.add(BODY.lightPerStone);
+      this.bus.emit('cue', { id: 'stoneLit' });
+    });
+    this.bus.on('soundBreathTone', ({ hz }) => {
+      this.audio.tone(hz, SOUND_BREATH.toneSeconds);
+      const p = this.game.world.playerPosition;
+      this.toneRings.send(p.x, p.y, p.z);
+      this.checks.set('soundBreathCount', this.sound.count);
+    });
+    this.bus.on('fogFled', () => this.checks.set('leftStormCount', this.storm.fleeCount));
+    this.bus.on('fogPushed', () => this.checks.set('pushCount', this.storm.pushCount));
+    this.bus.on('seedPlanted', ({ kind }) => {
+      const planted = [...this.checks.data.seedTypesPlanted, kind];
+      this.checks.set('seedTypesPlanted', planted);
+      if (planted.length === 1) this.checks.set('heartSeedFirstTry', kind === 'heart');
+    });
+    this.bus.on('thanksComplete', () => {
+      this.game.world.color.setGlobalTarget(1, NIGHT.colorSeconds);
+    });
+    this.bus.on('hintShown', ({ id }) => {
+      if (id === 'bird') this.bird.visible = true;
+    });
   }
 
   // ---------- flow ----------
 
-  /** Opens the start screen, or jumps straight to a scene. */
   begin(): void {
     this.phase = 'start';
     this.hud.setVisible(false);
@@ -146,10 +330,8 @@ export class Chapter2 implements ChapterRunner {
   }
 
   /**
-   * A fresh walk through this chapter.
-   *
-   * The start questions stay where they are, at the start of chapter 1. They
-   * are asked once, about the player, not once per chapter.
+   * A fresh walk through this chapter. The opening questions stay where they
+   * are, at the start of chapter 1: they are asked once, about the player.
    */
   private startFresh(): void {
     setChapterProgress(this.save, this.chapterId, { scene: 1, light: 0, completed: false });
@@ -164,9 +346,42 @@ export class Chapter2 implements ChapterRunner {
     this.enterScene(progress.scene as Scene2Id, true);
   }
 
-  /** `?chapter=2&scene=N` starts directly at a scene with the right light. */
+  /** `?chapter=2&scene=N` starts directly at a scene, with everything before it done. */
   private jumpToScene(scene: Scene2Id): void {
     this.light.set(SCENE2_STARTS[scene].light);
+    if (scene > 1) {
+      const spring = this.receive.get('spring');
+      if (spring) spring.remaining = 0;
+      this.game.world.color.addZone(LAYOUT2.spring.x, LAYOUT2.spring.z, SPRING2.zoneRadius);
+    }
+    if (scene > 2) {
+      for (const stone of this.body.stones) {
+        stone.lit = true;
+        stone.breaths = BODY.breathsPerStone;
+        this.game.world.player.setBodyPoint(stone.point, 1);
+      }
+      this.body.silhouetteTime = BODY.silhouetteSeconds;
+    }
+    if (scene > 3) {
+      this.rainStep = 3;
+      this.cloud.named = true;
+      this.cloud.dissolve();
+      this.game.world.color.addZone(LAYOUT2.rain.x, LAYOUT2.rain.z, RAIN.zoneRadius);
+    }
+    if (scene >= 4) this.sound.unlock();
+    if (scene > 4) {
+      this.storm.step = 5;
+      this.storm.done = true;
+      this.storm.dissolveTime = STORM.dissolveSeconds;
+      this.game.world.color.addZone(LAYOUT2.storm.x, LAYOUT2.storm.z, STORM.zoneRadius);
+    }
+    if (scene > 5) {
+      this.seedB.plant(true, 1);
+      this.seedB.state = 'grown';
+    }
+    if (scene >= 2) this.calm.set(CALM.heartThreshold + 0.05);
+    if (this.game.flags.calm !== null) this.calm.set(this.game.flags.calm);
+    if (scene >= 6) this.setNight(1);
     this.enterScene(scene, true);
   }
 
@@ -174,9 +389,10 @@ export class Chapter2 implements ChapterRunner {
     this.scene = scene;
     // Light is not carried over from chapter 1: a chapter opens on the same
     // footing whichever way the player came to it.
-    if (scene === 1) this.light.set(CHAPTER2.startLight);
+    if (scene === 1 && this.light.get() === 0) this.light.set(CHAPTER2.startLight);
     setChapterProgress(this.save, this.chapterId, { scene, light: this.light.get() });
     saveSave(this.save);
+    this.checks.enterScene(scene);
     this.phase = 'playing';
     this.panels.close();
     this.hud.setVisible(true);
@@ -187,28 +403,36 @@ export class Chapter2 implements ChapterRunner {
       this.game.world.placePlayer(start.x, start.z);
       this.game.camera.snapTo(this.game.world.playerPosition);
     }
+    this.bus.emit('sceneChanged', { scene: Math.min(6, scene) as 1 | 2 | 3 | 4 | 5 | 6 });
     void this.audio.start();
   }
 
-  /** Records how far the player has come. It only ever moves forward. */
   private advanceTo(scene: Scene2Id): void {
     if (scene <= this.scene) return;
     this.enterScene(scene, false);
   }
 
   private finishChapter(): void {
+    if (this.phase !== 'playing') return;
     this.checks.flushScene();
     setChapterProgress(this.save, this.chapterId, { completed: true });
     saveSave(this.save);
-    this.phase = 'reflect';
+    // The dream comes first: a short look at a place the player has not been,
+    // with no text on it at all.
+    this.phase = 'dream';
+    this.dreamTime = 0;
     this.hud.setVisible(false);
+    this.game.setPaused(true);
+    this.dream.play();
+  }
+
+  private startLearningCycle(): void {
+    this.phase = 'reflect';
     this.panels.reflect2(() => {
       this.phase = 'understand';
       this.panels.card(t().understand2.card, () => {
         this.phase = 'apply';
         this.panels.card(t().apply2.card, () => {
-          // The end questions belong after the last chapter in the build, not
-          // after every chapter.
           if (isLastChapter(this.chapterId)) {
             this.phase = 'endQuestions';
             this.panels.questions(this.save.endAnswers, (a) => {
@@ -273,16 +497,182 @@ export class Chapter2 implements ChapterRunner {
     this.breath.setPreset(next.rhythm);
     this.audio.setVolume(next.volume);
     this.audio.setMuted(next.muted);
+    this.audio.setSoftStorm(next.softStorm);
     this.game.setReducedMotion(next.reducedMotion);
     this.hud.breathCircle.reducedMotion = next.reducedMotion;
+    this.cloudView.reducedMotion = next.reducedMotion;
+    this.stormView.reducedMotion = next.reducedMotion;
     this.game.setAutoQuality(next.quality === 'auto');
     if (next.quality !== 'auto') this.game.setQuality(next.quality);
+  }
+
+  // ---------- actions ----------
+
+  private onPush(): void {
+    if (!this.storm.pushAvailable) return;
+    this.storm.push();
+    this.game.camera.addShake(0.5);
+  }
+
+  /**
+   * Planting a seed. In the meadows the seed is a tree, and there are two
+   * places to put one. The nearer spot wins.
+   */
+  private onInteract(): void {
+    const spot = this.nearSeedSpot();
+    if (!spot || spot.state !== 'none') return;
+    this.panels.seedChoice(
+      this.light.canAfford(SEEDS2.cost),
+      () => {
+        const paid = this.light.spend(SEEDS2.cost);
+        spot.plant(paid, this.calm.get());
+        this.closePanel();
+      },
+      () => this.closePanel(),
+      'tree',
+    );
+  }
+
+  private closePanel(): void {
+    this.panels.close();
+    this.game.setPaused(false);
+    this.hud.setVisible(true);
+  }
+
+  private nearSeedSpot(): SeedSpot | null {
+    const p = this.game.world.playerPosition;
+    const dA = dist2d(p.x, p.z, this.seedA.x, this.seedA.z);
+    const dB = dist2d(p.x, p.z, this.seedB.x, this.seedB.z);
+    if (Math.min(dA, dB) > 4) return null;
+    return dA <= dB ? this.seedA : this.seedB;
+  }
+
+  /** Opens the naming panel for a weather the player has stood with. */
+  private openNaming(weather: FeelingWeather): void {
+    this.naming = weather;
+    this.phase = 'naming';
+    const order = shuffledFeelings(this.rng);
+    // `?autoname=1` answers correctly for the browser tests.
+    if (this.game.flags.autoName) {
+      window.setTimeout(() => this.answerNaming(weather.type), 0);
+      return;
+    }
+    this.panels.naming(order, (choice) => this.answerNaming(choice));
+  }
+
+  private answerNaming(choice: FeelingType): void {
+    const weather = this.naming;
+    if (!weather) return;
+    const right =
+      weather === this.storm.weather ? this.storm.answer(choice) : weather.answer(choice);
+    const attempts = { ...this.checks.data.namingAttempts };
+    attempts[weather.type] = weather.attempts.length;
+    this.checks.set('namingAttempts', attempts);
+    this.bus.emit('weatherNamed', { type: weather.type, correct: right });
+
+    if (right) {
+      if (weather === this.cloud) this.rainStep = 1;
+      this.naming = null;
+      this.phase = 'playing';
+      this.closePanel();
+      return;
+    }
+    // Not a fit. The panel closes for four seconds and says only "Look again."
+    this.panels.lookAgain();
+    window.setTimeout(() => {
+      this.naming = null;
+      this.phase = 'playing';
+      this.closePanel();
+    }, 1400);
+  }
+
+  private onBreathCompleted(calm: boolean, exhale: number): void {
+    const p = this.game.world.playerPosition;
+
+    // The spring of scene 1.
+    const spring = this.receive.onBreath(calm, p.x, p.z);
+    if (spring) {
+      const anchor = this.game.world.anchors.get(spring.config.id);
+      if (anchor) {
+        for (let i = 0; i < spring.lastGiven; i++) {
+          this.motes.send(
+            this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
+            RECEIVE.moteFlightSeconds + i * 0.35,
+            () => this.light.add(1),
+          );
+        }
+      }
+      if (!this.hints.birdShown) this.checks.set('receivedWithoutSign', true);
+      this.game.world.color.addZone(LAYOUT2.spring.x, LAYOUT2.spring.z, SPRING2.zoneRadius);
+    }
+
+    this.body.onBreath(calm, p.x, p.z);
+    this.storm.onBreath(calm, p.x, p.z);
+    this.thanks.onBreath(calm, p.x, p.z);
+    // The light well: it gives only while the player is short, so it can never
+    // become the whole game, and never leaves them stuck without a seed.
+    const fromWell = this.well.onBreath(calm, p.x, p.z, this.light.get());
+    if (fromWell > 0) this.light.add(fromWell);
+
+    // Feeling the rain: two calm breaths under the cloud, once it is named.
+    if (calm && this.rainStep === 1 && this.cloud.distanceTo(p.x, p.z) <= RAIN.feelRadius) {
+      this.rainBreaths++;
+      if (this.rainBreaths >= RAIN.feelBreaths) this.releaseRain();
+    }
+
+    // The singing stone answers the first long, calm out-breath beside it.
+    const stoneDist = dist2d(p.x, p.z, LAYOUT2.singingStone.x, LAYOUT2.singingStone.z);
+    if (calm && !this.sound.unlocked && stoneDist <= SINGING_STONE.radius) {
+      const target = this.breath.getPreset().exhale;
+      if (exhale >= target * SOUND_BREATH.minExhaleFactor) {
+        this.sound.unlock();
+        this.audio.tone(SOUND_BREATH.baseHz, SOUND_BREATH.toneSeconds);
+        this.toneRings.send(p.x, p.y, p.z);
+      }
+    }
+
+    // Every other calm, long breath from here on is a tone.
+    const hz = this.sound.onBreath(calm, exhale, this.breath.getPreset().exhale);
+    if (hz !== null) {
+      if (this.storm.distanceTo(p.x, p.z) <= SOUND_BREATH.radius) this.storm.tone();
+      if (this.cloud.distanceTo(p.x, p.z) <= SOUND_BREATH.radius) this.cloud.tone();
+    }
+  }
+
+  /** The rain lets go: a rainbow, light, and colour returning to the meadow. */
+  private releaseRain(): void {
+    if (this.rainStep >= 3) return;
+    this.rainStep = 3;
+    this.cloud.dissolve();
+    this.rainbowTime = 0;
+    this.bus.emit('cue', { id: 'rainbow' });
+    this.bus.emit('lightCollected', { from: 'fog', amount: RAIN.lightReward });
+    this.bus.emit('zoneAdded', { x: this.cloud.x, z: this.cloud.z, radius: RAIN.zoneRadius });
+  }
+
+  private onLightCollected(from: 'spring' | 'fog', amount: number): void {
+    if (from !== 'fog') {
+      this.light.add(amount);
+      return;
+    }
+    // A weather dissolves into motes that flow into the player.
+    const source = this.cloud.dissolving ? this.cloudView : this.stormView;
+    for (let i = 0; i < amount * 6; i++) {
+      const start = source.randomPoint(new THREE.Vector3());
+      this.motes.send(
+        start,
+        WEATHER.dissolveSeconds * (0.5 + Math.random() * 0.5),
+        i < amount ? () => this.light.add(1) : null,
+      );
+    }
   }
 
   // ---------- per frame ----------
 
   update(dt: number): void {
+    const p = this.game.world.playerPosition;
     const walking = this.game.speed > 0.25;
+    this.clock += dt;
 
     let inHeld = this.game.input.breathInHeld;
     let outHeld = this.game.input.breathOutHeld;
@@ -294,12 +684,29 @@ export class Chapter2 implements ChapterRunner {
 
     if (this.phase === 'playing' && !this.panels.isOpen) {
       this.game.worldInputBlocked = false;
+      if (this.game.input.pushPressed) this.onPush();
+      if (this.game.input.interactPressed) this.onInteract();
       this.breath.update(dt, inHeld, outHeld, this.game.speed);
-      this.calm.update(dt, walking);
+      this.updateCalm(dt, walking, p.x, p.z);
       this.checks.update(dt);
+      this.runScene(dt, p.x, p.z);
     }
 
-    this.updateHud();
+    if (this.phase === 'dream') this.updateDream(dt);
+
+    // Visuals that always run, so a paused screen still looks alive.
+    this.motes.update(dt, this.game.world.player.chestWorld(this.tmp));
+    this.cloudView.update(dt);
+    this.stormView.update(dt);
+    this.toneRings.update(dt, SOUND_BREATH.ringSeconds);
+    this.springGlow.update(dt);
+    this.wellGlow.update(dt);
+    this.sproutA.update(dt);
+    this.sproutB.update(dt);
+
+    this.updateHud(dt, p.x, p.z);
+    this.updateSky();
+    this.updateAudio();
     this.debug?.update({
       calm: this.calm.get(),
       light: this.light.get(),
@@ -309,13 +716,145 @@ export class Chapter2 implements ChapterRunner {
         this.game.qualityDrops > 0
           ? `${this.game.quality.tier} (-${String(this.game.qualityDrops)})`
           : this.game.quality.tier,
-      fogStep: 0,
-      seed: 'none',
+      fogStep: this.storm.step,
+      seed: this.seedText(),
       checks: this.checks.data,
+      extra: `${this.cloud.type} ${this.cloud.intensity.toFixed(2)} tones=${String(this.sound.count)}`,
     });
 
     this.game.calm = this.calm.get();
     this.game.light = this.light.get();
+  }
+
+  /**
+   * The calm value, with the storm's leftover wind.
+   *
+   * Seed spot A sits where the storm stood. The wind there takes calm twice as
+   * fast, so the same player planting in the same minute gets a mind seed at
+   * one spot and a heart seed at the other. Nothing says so; the difference is
+   * there to be felt.
+   */
+  private updateCalm(dt: number, walking: boolean, px: number, pz: number): void {
+    const windy = dist2d(px, pz, this.seedA.x, this.seedA.z) <= SEEDS2.awayRadius * 0.6;
+    const factor = windy ? SEEDS2.windyCalmDecayFactor : 1;
+    for (let i = 0; i < factor; i++) this.calm.update(dt, walking);
+    if (this.game.flags.calm !== null) this.calm.set(this.game.flags.calm);
+  }
+
+  /**
+   * Every mechanic, every frame, wherever the player is standing. The scene
+   * number only records how far they have come.
+   */
+  private runScene(dt: number, px: number, pz: number): void {
+    const walkSpeed = 4.2;
+
+    // Scene 1: the bird lands on the spring only after a long time.
+    const spring = this.receive.get('spring');
+    this.hints.updateScene3(dt, spring?.empty ?? false);
+
+    this.body.update(dt);
+
+    // Scene 3: the cloud. It follows once the player has come near it.
+    if (!this.cloud.dissolving) {
+      const met = this.cloud.distanceTo(px, pz) <= RAIN.spawnAhead;
+      this.cloud.followsPlayer = this.cloud.followsPlayer || met;
+      this.cloud.update(dt, px, pz, this.game.speed, walkSpeed);
+      this.checks.set('ranFromCloudCount', this.cloud.fleeCount);
+      if (this.phase === 'playing' && this.rainStep === 0 && this.cloud.canName(this.breathsCalm)) {
+        this.openNaming(this.cloud);
+      }
+    } else if (this.rainbowTime < RAIN.rainbowSeconds) {
+      this.rainbowTime += dt;
+    }
+
+    // Scene 4: the storm.
+    this.storm.update(dt, px, pz);
+    if (
+      this.phase === 'playing' &&
+      this.storm.step === 2 &&
+      this.storm.weather.canName(this.breathsCalm)
+    ) {
+      this.openNaming(this.storm.weather);
+    }
+    this.storm.weather.update(dt, px, pz, this.game.speed, walkSpeed);
+
+    // The singing stone hums when the player is near it.
+    const stoneDist = dist2d(px, pz, LAYOUT2.singingStone.x, LAYOUT2.singingStone.z);
+    if (stoneDist <= SINGING_STONE.radius) {
+      this.stoneNear += dt;
+      if (this.stoneNear > 4) {
+        this.stoneNear = 0;
+        this.bus.emit('cue', { id: 'stoneHum' });
+      }
+    } else {
+      this.stoneNear = 0;
+    }
+
+    // Scene 5: the two seeds.
+    this.seedA.update(dt, px, pz);
+    this.seedB.update(dt, px, pz);
+
+    // Scene 6: night falls once a heart tree stands.
+    const heartTree = this.heartTree();
+    if (heartTree && this.night < 1) {
+      this.setNight(clamp01(this.night + dt / NIGHT.fallSeconds));
+    }
+    if (heartTree) {
+      // The thanks is given under whichever heart tree the player grew.
+      this.thanks.spot.x = heartTree.x;
+      this.thanks.spot.z = heartTree.z;
+      this.thanks.arm();
+    }
+    this.thanks.update(dt);
+
+    this.updateProgress();
+
+    if (this.thanks.complete && this.game.world.color.globalColor >= 0.999) {
+      this.finishChapter();
+    }
+  }
+
+  /** The heart tree the chapter ends under, or null while none stands. */
+  private heartTree(): SeedSpot | null {
+    if (this.seedB.heartTreeStanding) return this.seedB;
+    if (this.seedA.heartTreeStanding) return this.seedA;
+    return null;
+  }
+
+  private updateProgress(): void {
+    let reached: Scene2Id = 1;
+    if (this.receive.get('spring')?.empty) reached = 2;
+    if (this.body.allLit) reached = 3;
+    if (this.rainStep >= 3) reached = 4;
+    if (this.storm.done) reached = 5;
+    if (this.heartTree()) reached = 6;
+    if (reached > this.scene) this.advanceTo(reached);
+  }
+
+  /** The short dream at the end: a village, and a bird crossing twice. */
+  private updateDream(dt: number): void {
+    this.dreamTime += dt;
+    if (this.dreamTime >= NIGHT.dreamSeconds) {
+      this.dream.stop();
+      this.game.setDarken(0, dt);
+      this.startLearningCycle();
+    }
+  }
+
+  private setNight(value: number): void {
+    const was = this.night;
+    this.night = clamp01(value);
+    this.game.world.setNight(this.night);
+    if (was < 0.5 && this.night >= 0.5) {
+      this.bus.emit('cue', { id: 'night' });
+      this.bus.emit('nightFell');
+    }
+  }
+
+  /** The slow day. It runs from morning to evening over one play of the chapter. */
+  private updateSky(): void {
+    if (this.night > 0) return;
+    this.game.world.setDay(clamp01(this.clock / WORLD2.daySeconds));
   }
 
   private autoBreathe(dt: number): { inHeld: boolean; outHeld: boolean } {
@@ -326,7 +865,71 @@ export class Chapter2 implements ChapterRunner {
     return { inHeld, outHeld: !inHeld };
   }
 
-  private updateHud(): void {
+  private seedText(): string {
+    const a = this.seedA.state === 'none' ? '' : `A:${this.seedA.kind}/${this.seedA.state} `;
+    const b = this.seedB.state === 'none' ? '' : `B:${this.seedB.kind}/${this.seedB.state}`;
+    return `${a}${b}` || 'none';
+  }
+
+  private updateHud(dt: number, px: number, pz: number): void {
+    // The storm's thought, shown while the player stays close to it.
+    this.hud.setFogText(
+      t().storm.thought,
+      this.storm.step >= 1 && !this.storm.done ? this.storm.seeProgress : 0,
+    );
+
+    // The wind bends the grass around whichever weather is nearest.
+    const stormDist = this.storm.distanceTo(px, pz);
+    const cloudDist = this.cloud.distanceTo(px, pz);
+    const nearStorm = !this.storm.done && stormDist < cloudDist;
+    const source = nearStorm ? this.storm : this.cloud;
+    this.game.wind.x = source.x;
+    this.game.wind.z = source.z;
+    this.game.wind.radius = (nearStorm ? this.storm.radius : this.cloud.size) * 2.4;
+    const feeling = nearStorm ? this.storm.step >= 2 && !this.storm.done : !this.cloud.dissolving;
+    this.game.wind.strength = feeling
+      ? (nearStorm ? 0.55 : 0.3) + Math.sin(this.game.time * 1.3) * 0.2
+      : 0;
+
+    // Step 3 of the storm: the middle is quiet and darker.
+    const inCenter = !this.storm.done && stormDist <= STORM.centerRadius && this.storm.open;
+    this.game.setDarken(inCenter ? 0.7 : 0, dt);
+
+    this.hud.breathCircle.setTremble(
+      !this.storm.done && this.storm.step >= 3
+        ? clamp01(1 - stormDist / STORM.feelRadius)
+        : !this.cloud.dissolving && this.rainStep >= 1
+          ? clamp01(1 - cloudDist / RAIN.feelRadius) * 0.6
+          : 0,
+    );
+
+    // The two weathers, drawn.
+    this.updateWeatherViews();
+
+    this.hud.setPushVisible(this.storm.pushAvailable && !this.storm.done);
+    const spot = this.nearSeedSpot();
+    this.hud.setInteractVisible(spot !== null && spot.state === 'none');
+
+    // The spring and the well glow softly, brighter when they still have light.
+    const spring = this.receive.get('spring');
+    if (spring) {
+      const d = spring.distanceTo(px, pz);
+      const fade = clamp01(1 - (d - SPRING2.drawRadius) / 26);
+      this.springGlow.setStrength(
+        (spring.empty ? 0.5 : d <= SPRING2.drawRadius ? 1.1 : 0.55) * (0.35 + 0.65 * fade),
+        spring.empty ? 2.2 : 1.9,
+      );
+    }
+    const wellOn = this.well.wouldGive(px, pz, this.light.get());
+    this.wellGlow.setStrength(wellOn ? 1.1 : 0.4, wellOn ? 2.3 : 1.8);
+
+    // The two seeds, and the rainbow over the meadow where the rain let go.
+    this.sproutA.setState(this.seedA.state === 'growing', this.seedA.progress, this.seedA.paused);
+    this.sproutB.setState(this.seedB.state === 'growing', this.seedB.progress, this.seedB.paused);
+    this.rainbow.setAmount(
+      this.rainStep >= 3 ? clamp01(this.rainbowTime / 1.5) * clamp01(3 - this.rainbowTime / 3) : 0,
+    );
+
     this.hud.breathCircle.update(
       this.breath.targetRing,
       this.breath.playerRing,
@@ -334,25 +937,94 @@ export class Chapter2 implements ChapterRunner {
       this.game.time,
     );
     this.hud.breathCircle.setVisible(this.phase === 'playing');
+    this.hud.showHint(this.currentHint());
+  }
+
+  private updateWeatherViews(): void {
+    const cloudY = groundHeight(this.cloud.x, this.cloud.z) + WEATHER.height;
+    this.cloudView.group.position.set(this.cloud.x, cloudY, this.cloud.z);
+    this.cloudView.setSize(this.cloud.size / 4.5);
+    this.cloudView.setIntensity(
+      this.cloud.dissolving
+        ? Math.max(0, 1 - this.cloud.dissolveTime / WEATHER.dissolveSeconds) * this.cloud.intensity
+        : this.cloud.intensity,
+    );
+    this.rainbow.group.position.set(this.cloud.x, cloudY - 2, this.cloud.z - 6);
+
+    this.stormView.setSize(this.storm.radius / LAYOUT2.storm.radius);
+    this.stormView.setIntensity(
+      this.storm.done
+        ? Math.max(0, 1 - this.storm.dissolveTime / STORM.dissolveSeconds)
+        : this.storm.weather.intensity,
+    );
+  }
+
+  /** Short control hints only. They never explain what anything means. */
+  private currentHint(): string | null {
+    if (this.phase !== 'playing') return null;
+    const spot = this.nearSeedSpot();
+    if (spot && spot.state === 'none') return t().seed.plant;
+    return null;
+  }
+
+  private updateAudio(): void {
+    const p = this.game.world.playerPosition;
+    const stormDist = this.storm.distanceTo(p.x, p.z);
+    const cloudDist = this.cloud.distanceTo(p.x, p.z);
+    const nearStorm = !this.storm.done && stormDist <= this.storm.radius * 2;
+    const nearCloud = !this.cloud.dissolving && cloudDist <= this.cloud.size * 2;
+    const drone = nearStorm ? clamp01(1 - stormDist / (this.storm.radius * 2)) : 0;
+    const muffle = nearStorm && stormDist <= this.storm.radius ? 0.6 : 0;
+    this.audio.update(
+      this.breath.playerRing,
+      this.breath.playerPhase() === 'inhale',
+      this.game.world.color.globalColor,
+      drone + (nearCloud ? 0.15 : 0),
+      muffle,
+    );
   }
 
   // ---------- tests ----------
 
   /** What the browser tests read. Only attached behind a debug flag. */
   testApi(): Record<string, (...args: never[]) => unknown> {
-    return {
+    const api = {
       snapshot: () => ({
         chapter: 2,
         scene: this.scene,
         phase: this.phase,
         calm: this.calm.get(),
         light: this.light.get(),
+        fps: this.game.fps.value,
+        px: this.game.world.playerPosition.x,
+        pz: this.game.world.playerPosition.z,
+        speed: this.game.speed,
         breathsTotal: this.breathsTotal,
         breathsCalm: this.breathsCalm,
-        fps: this.game.fps.value,
+        hasBreathed: this.hasBreathed,
+        springLeft: this.receive.get('spring')?.remaining ?? 0,
+        bodyLit: this.body.litPoints,
+        cloudIntensity: this.cloud.intensity,
+        cloudNamed: this.cloud.named,
+        rainStep: this.rainStep,
+        soundUnlocked: this.sound.unlocked,
+        soundCount: this.sound.count,
+        stormStep: this.storm.step,
+        stormDone: this.storm.done,
+        seedA: `${this.seedA.kind}/${this.seedA.state}`,
+        seedB: `${this.seedB.kind}/${this.seedB.state}`,
+        night: this.night,
+        globalColor: this.game.world.color.globalColor,
+        thanks: this.thanks.breaths,
+        naming: this.naming !== null,
       }),
+      walkTo: (x: number, z: number) => {
+        this.game.autoWalk = { x, z };
+      },
+      walking: () => this.game.autoWalk !== null,
+      answer: (choice: FeelingType) => this.answerNaming(choice),
       finish: () => this.finishChapter(),
-      advance: ((scene: Scene2Id) => this.advanceTo(scene)) as (...a: never[]) => unknown,
     };
+    return api as unknown as Record<string, (...args: never[]) => unknown>;
   }
 }

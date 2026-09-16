@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { LAYOUT, WORLD } from '../content/chapter1';
+import { LAYOUT } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { makeRng } from '../core/math';
 import { worldMaterial } from '../render/materials';
-import { inGap, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
+import { place } from './place';
+import type { PropsResult } from './place';
 
 /** A material every world prop shares, so they all follow the grey-to-colour rule. */
 function propMaterial(color: THREE.ColorRepresentation, rim = 0.22): THREE.Material {
@@ -186,45 +187,47 @@ export function buildBridge(): THREE.Group {
   return group;
 }
 
-export interface ScatterResult {
-  group: THREE.Group;
-  /** Circles the player cannot walk through. */
-  blockers: { x: number; z: number; radius: number }[];
+export interface ScatterOptions {
+  /** Circles nothing may stand inside, so the player always has room. */
+  keepClear: { x: number; z: number; r: number }[];
+  /** How many trees and rocks to try to place. */
+  count?: number;
+  /** Share of props that are trees rather than rocks. */
+  treeShare?: number;
+  seed?: number;
 }
 
-/** Scatters trees and rocks over the valley sides, well clear of the path. */
-export function scatterProps(treeBlobs: number): ScatterResult {
+/**
+ * Scatters trees and rocks over the shoulders of the active place, well clear
+ * of the floor the player walks. The place decides its own shape; this only
+ * decides what stands on it.
+ */
+export function scatterProps(treeBlobs: number, options: ScatterOptions): PropsResult {
   const group = new THREE.Group();
   group.name = 'scatter';
   const blockers: { x: number; z: number; radius: number }[] = [];
-  const rng = makeRng(20260915);
-
-  const keepClear: { x: number; z: number; r: number }[] = [
-    { x: LAYOUT.spring1.x, z: LAYOUT.spring1.z, r: 8 },
-    { x: LAYOUT.spring2.x, z: LAYOUT.spring2.z, r: 9 },
-    { x: LAYOUT.spring3.x, z: LAYOUT.spring3.z, r: 8 },
-    { x: LAYOUT.fog.x, z: LAYOUT.fog.z, r: 11 },
-    { x: LAYOUT.seedSpot.x, z: LAYOUT.seedSpot.z, r: 10 },
-    { x: LAYOUT.playerStart.x, z: LAYOUT.playerStart.z, r: 9 },
-    { x: LAYOUT.signStone.x, z: LAYOUT.signStone.z, r: 4 },
-  ];
+  const rng = makeRng(options.seed ?? 20260915);
+  const here = place();
+  const keepClear = options.keepClear;
+  const want = options.count ?? 320;
+  const treeShare = options.treeShare ?? 0.62;
 
   const treeGeoCache: THREE.Group[] = [];
   for (let i = 0; i < 14; i++) treeGeoCache.push(buildTree(300 + i, treeBlobs));
 
   let placed = 0;
-  for (let i = 0; i < 2600 && placed < 320; i++) {
-    const z = WORLD.lengthEnd + rng() * (WORLD.lengthStart - WORLD.lengthEnd);
-    const half = valleyHalfWidth(z);
+  for (let i = 0; i < want * 9 && placed < want; i++) {
+    const z = here.zEnd + rng() * (here.zStart - here.zEnd);
+    const half = here.halfWidth(z);
     const side = rng() < 0.5 ? -1 : 1;
     // Props live on the shoulders, not on the floor the player walks.
-    const x = pathCenterX(z) + side * (half * (0.72 + rng() * 0.55));
-    if (Math.abs(x) > WORLD.halfWidth - 3) continue;
-    if (inGap(x, z)) continue;
+    const x = here.centerX(z) + side * (half * (0.72 + rng() * 0.55));
+    if (Math.abs(x) > here.halfWidthMax - 3) continue;
+    if (here.isHole(x, z)) continue;
     if (keepClear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
 
-    const y = terrainHeight(x, z);
-    if (rng() < 0.62) {
+    const y = here.height(x, z);
+    if (rng() < treeShare) {
       const source = treeGeoCache[Math.floor(rng() * treeGeoCache.length)];
       if (!source) continue;
       const tree = source.clone();

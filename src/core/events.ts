@@ -1,4 +1,5 @@
 import type { SceneId } from '../content/chapter1';
+import type { BodyPoint, FeelingType } from '../content/chapter2';
 
 /** Every event the systems use to talk to each other. */
 export interface GameEvents {
@@ -23,12 +24,30 @@ export interface GameEvents {
   sceneChanged: { scene: SceneId };
   hintShown: { id: 'bird' | 'butterfly' };
   chapterComplete: void;
+  /** Chapter 2: the feeling weather, the body stones and the sound breath. */
+  weatherNamed: { type: FeelingType; correct: boolean };
+  weatherIntensity: { type: FeelingType; value: number };
+  weatherDissolved: { type: FeelingType };
+  bodyStoneProgress: { point: BodyPoint; breaths: number };
+  bodyPointLit: { point: BodyPoint };
+  soundBreathTone: { hz: number; index: number };
+  stormStepChanged: { step: 0 | 1 | 2 | 3 | 4 | 5 };
+  lightWellGave: { amount: number };
+  nightFell: void;
   /** Sound-only cue requests. */
   cue: { id: CueId };
 }
 
 export type CueId =
   | 'calmBreath'
+  | 'soundBreath'
+  | 'stoneHum'
+  | 'stoneLit'
+  | 'rain'
+  | 'thunder'
+  | 'whisper'
+  | 'rainbow'
+  | 'night'
   | 'spring'
   | 'mote'
   | 'push'

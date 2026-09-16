@@ -40,6 +40,20 @@ export interface Place {
   readonly halfWidthMax: number;
   buildTerrain(): TerrainResult;
   buildProps(treeBlobs: number): PropsResult;
+  /**
+   * The named things that stand in this place: spring basins, standing
+   * stones, a well. A chapter looks them up by name to light them, move them
+   * or hide them.
+   */
+  buildFixtures(): FixturesResult;
+  /** The bridge that grows over a gap, where the place has one. */
+  readonly bridge: { x: number; z: number; deckZ: number } | null;
+}
+
+export interface FixturesResult {
+  group: THREE.Group;
+  anchors: Map<string, THREE.Group>;
+  blockers: { x: number; z: number; radius: number }[];
 }
 
 /**

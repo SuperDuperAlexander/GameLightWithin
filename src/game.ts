@@ -15,7 +15,7 @@ import {
 import type { QualitySettings, QualityTier } from './core/quality';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
-import { borderAmount } from './world/terrain';
+import { border } from './world/place';
 
 /** The fixed simulation step, in seconds. */
 const FIXED_STEP = 1 / 60;
@@ -249,7 +249,7 @@ export class Game {
     }
 
     // The border mist turns the player back gently. There are no invisible walls.
-    this.borderPush = borderAmount(p.x, p.z);
+    this.borderPush = border(p.x, p.z);
     if (this.borderPush > 0.01) {
       const inwardX = -Math.sign(p.x - 0) * 0.35;
       const inwardZ = p.z > WORLD.lengthStart ? -1 : p.z < WORLD.lengthEnd ? 1 : 0;

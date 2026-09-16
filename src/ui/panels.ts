@@ -277,6 +277,15 @@ export class Panels {
         next.reducedMotion ? 'on' : 'off',
         (v) => (next.reducedMotion = v === 'on'),
       ),
+      segment(
+        s.settings2.softStorm,
+        [
+          { id: 'off' as const, label: s.settings.off },
+          { id: 'on' as const, label: s.settings.on },
+        ],
+        next.softStorm ? 'on' : 'off',
+        (v) => (next.softStorm = v === 'on'),
+      ),
       el('div', { class: 'lw-row' }, button(s.start.back, 'lw-btn', this.tap(onBack))),
     );
     this.show(panel);

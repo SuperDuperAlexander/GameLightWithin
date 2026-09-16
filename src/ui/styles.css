@@ -319,12 +319,16 @@ input[type='range'] {
 .lw-breath-label {
   position: absolute;
   left: 50%;
-  top: -22px;
+  top: -26px;
   transform: translateX(-50%);
   white-space: nowrap;
   font-size: 14px;
   color: var(--ink);
-  text-shadow: 0 1px 4px rgba(250, 248, 244, 0.95);
+  /* A frosted pill rather than a halo. The chapter 2 meadows go to night,
+     and dark text with a pale glow disappears against a dark meadow. */
+  background: rgba(250, 248, 244, 0.72);
+  border-radius: 999px;
+  padding: 3px 12px;
 }
 
 .lw-corner {
@@ -579,4 +583,67 @@ body::after {
 body.fading::after {
   opacity: 1;
   pointer-events: all;
+}
+
+/* The chapter 2 dream: a flat night village, shown for a few seconds. */
+.lw-dream {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #0b101f;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 900ms ease;
+}
+.lw-dream--on {
+  opacity: 1;
+}
+.lw-dream-sky {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* The bird crosses the same roof twice, which is the whole point of it. */
+.lw-dream-bird {
+  transform: translate(-40px, 108px);
+}
+.lw-dream--on .lw-dream-bird {
+  animation: lw-dream-cross var(--lw-dream-seconds, 13s) ease-in-out 1 both;
+}
+@keyframes lw-dream-cross {
+  0% {
+    transform: translate(-40px, 112px) scale(1);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  40% {
+    transform: translate(440px, 96px) scale(1);
+    opacity: 1;
+  }
+  46% {
+    transform: translate(440px, 96px) scale(1);
+    opacity: 0;
+  }
+  54% {
+    transform: translate(-40px, 112px) scale(1);
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  92% {
+    transform: translate(440px, 96px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(440px, 96px) scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lw-dream--on .lw-dream-bird {
+    animation-timing-function: linear;
+  }
 }

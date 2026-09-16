@@ -1,15 +1,16 @@
 import * as THREE from 'three';
-import { LAYOUT, PLAYER, SHADOW, TIERS } from '../content/chapter1';
+import { PLAYER, SHADOW, TIERS } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import type { QualitySettings } from '../core/quality';
 import { ColorRestoreState, colorUniforms } from '../render/colorRestore';
 import { buildAtmosphere, updateAtmosphere } from './atmosphere';
 import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
+import { place } from './place';
+import type { Place } from './place';
 import { PlayerFigure } from './player';
-import { buildBridge, buildSignStone, buildSpringBasin, scatterProps } from './props';
-import { buildSky, updateSky } from './sky';
-import { buildTerrain, terrainHeight } from './terrain';
+import { buildBridge } from './props';
+import { buildSky, setSkyDay, setSkyNight, updateSky } from './sky';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
 const COLD_RIM = new THREE.Color(PALETTE.skyGrey);
@@ -18,6 +19,7 @@ const HAZE_WARM = new THREE.Color(PALETTE.farHillsViolet).lerp(
   new THREE.Color(PALETTE.warmSky),
   0.55,
 );
+const NIGHT_HAZE = new THREE.Color(PALETTE.night);
 
 /**
  * Builds and holds the valley: terrain, sky, props, grass, the player figure
@@ -28,13 +30,16 @@ export class World {
   readonly ground: Ground;
   readonly player = new PlayerFigure();
   readonly color = new ColorRestoreState();
-  readonly springAnchors = new Map<string, THREE.Group>();
-  readonly bridge: THREE.Group;
+  /** Named things that stand in this place, looked up by the chapter. */
+  readonly anchors = new Map<string, THREE.Group>();
+  readonly bridge: THREE.Group | null = null;
+  /** The place this world is built from. */
+  readonly place: Place;
   private readonly sky: THREE.Mesh;
   private readonly grass: THREE.Mesh;
   private readonly atmosphere: THREE.Points;
   private readonly terrainMesh: THREE.Mesh;
-  private readonly bridgeDeck: THREE.Mesh;
+  private readonly bridgeDeck: THREE.Mesh | null = null;
   /** The bridge's own colours, kept so the golden blend stays reversible. */
   private readonly bridgeColors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
   private bridgeGold = -1;
@@ -50,11 +55,19 @@ export class World {
   private envColorAtBuild = -1;
   /** The chapter writes the player's ground speed here for the walk cycle. */
   playerSpeed = 0;
+  /** 0 day, 1 night. Chapter 2 turns this up for its last scene. */
+  private night = 0;
+  /** 0 morning, 1 evening. */
+  private day = 0;
+  /** The sun's full strength in daylight, kept so night can dim it back. */
+  private readonly sunIntensity: number;
 
   constructor(quality: QualitySettings, renderer?: THREE.WebGLRenderer) {
-    const terrain = buildTerrain();
+    const here = place();
+    this.place = here;
+    const terrain = here.buildTerrain();
     this.terrainMesh = terrain.mesh;
-    this.scene.add(terrain.mesh, terrain.chasm);
+    this.scene.add(terrain.mesh, ...terrain.extras);
 
     this.ground = new Ground(terrain.colliders);
 
@@ -66,6 +79,7 @@ export class World {
     // warmth comes from the grey-to-colour system, not from the lamp.
     this.sun = new THREE.DirectionalLight(0xfff6e6, 1.7);
     this.sun.position.set(38, 44, -62);
+    this.sunIntensity = this.sun.intensity;
     this.sun.castShadow = false;
     this.sun.shadow.bias = SHADOW.bias;
     this.sun.shadow.normalBias = SHADOW.normalBias;
@@ -81,7 +95,7 @@ export class World {
     // No ambient fill light. The environment map is the sky light now, and a
     // flat fill on top of it only washes the contrast out of everything.
 
-    const props = scatterProps(quality.treeBlobs);
+    const props = here.buildProps(quality.treeBlobs);
     this.scene.add(props.group);
     for (const b of props.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
 
@@ -95,41 +109,29 @@ export class World {
     this.scene.add(this.atmosphere);
     this.applyQuality(quality);
 
-    for (const [id, spot] of [
-      ['spring1', LAYOUT.spring1],
-      ['spring2', LAYOUT.spring2],
-      ['spring3', LAYOUT.spring3],
-    ] as const) {
-      const basin = buildSpringBasin();
-      basin.position.set(spot.x, terrainHeight(spot.x, spot.z), spot.z);
-      this.springAnchors.set(id, basin);
-      this.scene.add(basin);
+    const fixtures = here.buildFixtures();
+    this.scene.add(fixtures.group);
+    for (const [id, anchor] of fixtures.anchors) this.anchors.set(id, anchor);
+    for (const b of fixtures.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
+
+    if (here.bridge) {
+      const bridge = buildBridge();
+      bridge.position.set(
+        here.bridge.x,
+        here.height(here.bridge.x, here.bridge.deckZ) - 7,
+        here.bridge.z,
+      );
+      bridge.visible = false;
+      this.scene.add(bridge);
+      this.bridge = bridge;
+      this.bridgeDeck = bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
+      bridge.traverse((o) => {
+        const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+        if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
+          this.bridgeColors.push({ material, base: material.color.clone() });
+        }
+      });
     }
-
-    const stone = buildSignStone();
-    stone.position.set(
-      LAYOUT.signStone.x,
-      terrainHeight(LAYOUT.signStone.x, LAYOUT.signStone.z),
-      LAYOUT.signStone.z,
-    );
-    stone.rotation.y = -0.6;
-    this.scene.add(stone);
-
-    this.bridge = buildBridge();
-    this.bridge.position.set(
-      LAYOUT.bridge.x,
-      terrainHeight(LAYOUT.bridge.x, LAYOUT.gap.z1 + 3) - 7,
-      LAYOUT.bridge.z,
-    );
-    this.bridge.visible = false;
-    this.scene.add(this.bridge);
-    this.bridgeDeck = this.bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
-    this.bridge.traverse((o) => {
-      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-      if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
-        this.bridgeColors.push({ material, base: material.color.clone() });
-      }
-    });
 
     this.scene.add(this.player.group);
 
@@ -137,22 +139,22 @@ export class World {
     // and the grass does neither: 60,000 alpha-tested cards in a shadow pass
     // would cost more than every other thing in the valley put together.
     terrain.mesh.receiveShadow = true;
-    terrain.chasm.traverse((o) => (o.receiveShadow = true));
+    for (const extra of terrain.extras) {
+      extra.traverse((o: THREE.Object3D) => (o.receiveShadow = true));
+    }
     props.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
     });
-    for (const basin of this.springAnchors.values()) {
-      basin.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-      });
-    }
-    this.bridge.traverse((o) => {
+    fixtures.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    });
+    this.bridge?.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
@@ -166,6 +168,37 @@ export class World {
     // returns to colour, so the haze never stays a cold grey over warm hills.
     this.haze = new THREE.Fog(new THREE.Color(PALETTE.skyGrey), 38, 185);
     this.scene.fog = this.haze;
+  }
+
+  /**
+   * The time of day.
+   *
+   * `night` is the whole amount, not a step, so a chapter can set it straight
+   * to 1 or ease it and the result is the same. Everything that reads as
+   * daylight follows it: the sun, the haze and the sky light itself, because
+   * a night sky filtered into the environment map is what makes a moonlit
+   * meadow read as moonlit rather than as a dark photograph of a day.
+   */
+  setNight(night: number): void {
+    const n = Math.max(0, Math.min(1, night));
+    if (Math.abs(n - this.night) < 0.001) return;
+    this.night = n;
+    setSkyNight(this.sky, n);
+    colorUniforms.uNight.value = n;
+    this.sun.intensity = this.sunIntensity * (1 - n * 0.55);
+    this.sun.color.setHex(n > 0.5 ? 0xc9d6f2 : 0xfff6e6);
+    // The sky light is what makes a moonlit meadow read as moonlit rather
+    // than as a dark photograph of a day, so it is turned up, not down.
+    this.scene.environmentIntensity = 0.35 + n * 0.75;
+    this.refreshEnvironment();
+  }
+
+  /** 0 morning, 1 evening. The chapter 2 sky runs one slow day. */
+  setDay(day: number): void {
+    const d = Math.max(0, Math.min(1, day));
+    if (Math.abs(d - this.day) < 0.004) return;
+    this.day = d;
+    setSkyDay(this.sky, d);
   }
 
   /**
@@ -203,7 +236,7 @@ export class World {
     this.envTarget?.dispose();
     this.envTarget = this.pmrem.fromScene(this.envScene, 0, 1, 400);
     this.scene.environment = this.envTarget.texture;
-    this.scene.environmentIntensity = 0.35;
+    this.scene.environmentIntensity = 0.35 + this.night * 0.75;
     this.envColorAtBuild = this.color.globalColor;
   }
 
@@ -263,13 +296,15 @@ export class World {
     return this.ground.heightAt(x, z);
   }
 
-  /** Raises the bridge into place over the gap. */
+  /** Raises the bridge into place over the gap. Places without one ignore it. */
   setBridgeRise(t: number): void {
-    const top = terrainHeight(LAYOUT.bridge.x, LAYOUT.gap.z1 + 3);
+    const spot = this.place.bridge;
+    if (!this.bridge || !spot) return;
+    const top = this.place.height(spot.x, spot.deckZ);
     this.bridge.visible = t > 0;
     const eased = t * t * (3 - 2 * t);
     this.bridge.position.y = top - 7 + eased * 7;
-    if (t >= 1) this.ground.addCollider(this.bridgeDeck);
+    if (t >= 1 && this.bridgeDeck) this.ground.addCollider(this.bridgeDeck);
   }
 
   update(
@@ -289,6 +324,7 @@ export class World {
       .copy(COLD_RIM)
       .lerp(WARM_RIM, this.color.globalColor);
     this.haze.color.copy(COLD_RIM).lerp(HAZE_WARM, this.color.globalColor);
+    if (this.night > 0) this.haze.color.lerp(NIGHT_HAZE, this.night);
     // The sky changes slowly, so the environment map is only re-filtered when
     // it has drifted far enough to see. Doing it every frame would cost more
     // than everything else in the valley.
@@ -309,7 +345,7 @@ export class World {
 
   /** Puts the player on the ground at a point and returns the height used. */
   placePlayer(x: number, z: number): number {
-    const y = this.groundAt(x, z) ?? terrainHeight(x, z);
+    const y = this.groundAt(x, z) ?? this.place.height(x, z);
     this.player.setPosition(x, y, z);
     return y;
   }

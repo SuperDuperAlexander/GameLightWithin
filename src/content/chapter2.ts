@@ -23,6 +23,15 @@ export const FEELINGS: FeelingType[] = ['sadness', 'anger', 'worry'];
  */
 export const CHAPTER2 = {
   startLight: 3,
+  /**
+   * How much colour the meadows already hold at the start.
+   *
+   * Chapter 1 begins in full grey, because learning to receive is what brings
+   * the colour back. A player who has walked that does not arrive somewhere
+   * grey again: the meadows are already alive, and this chapter's moments lift
+   * them the rest of the way.
+   */
+  startColor: 0.55,
   /** Chapter 2 helps less than chapter 1, so the breath circle is quieter. */
   circleStrength: 0.6,
 };

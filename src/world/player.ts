@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { LIGHT, PLAYER } from '../content/chapter1';
+import { BODY, BODY_POINTS } from '../content/chapter2';
+import type { BodyPoint } from '../content/chapter2';
 import { PALETTE } from '../content/palette';
 import { clamp01 } from '../core/math';
 import { worldMaterial } from '../render/materials';
@@ -150,6 +152,49 @@ export class PlayerFigure {
     const mat = this.glow.material as THREE.ShaderMaterial;
     const u = mat.uniforms.uStrength;
     if (u) u.value = 0.22 + this.glowAmount * 1.5;
+  }
+
+  /**
+   * The four body points: feet, belly, heart, head.
+   *
+   * They are built once and left dark. Chapter 2 lights them one at a time as
+   * the player breathes at each stone, and a point that is lit stays lit. No
+   * other chapter touches them, so they cost one hidden group at the start.
+   */
+  private bodyGlows: Map<BodyPoint, THREE.Mesh> | null = null;
+
+  /** Lights one body point, or dims it. `amount` is 0 to 1. */
+  setBodyPoint(point: BodyPoint, amount: number): void {
+    if (!this.bodyGlows) this.buildBodyGlows();
+    const mesh = this.bodyGlows?.get(point);
+    if (!mesh) return;
+    const a = clamp01(amount);
+    mesh.visible = a > 0.01;
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = a * 0.85;
+    mesh.scale.setScalar(0.1 + a * 0.075);
+  }
+
+  private buildBodyGlows(): void {
+    this.bodyGlows = new Map();
+    const geo = new THREE.SphereGeometry(1, 10, 8);
+    for (const point of BODY_POINTS) {
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(PALETTE.receiveGold),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+      mesh.position.set(0, BODY.heights[point], 0.16);
+      mesh.visible = false;
+      mesh.name = `bodyGlow-${point}`;
+      this.group.add(mesh);
+      this.bodyGlows.set(point, mesh);
+    }
   }
 
   setLight(count: number): void {

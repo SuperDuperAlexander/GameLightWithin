@@ -4,6 +4,7 @@ import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import type { TerrainResult } from './place';
 
 // three-mesh-bvh drives both the ground checks and the prop collision.
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -153,13 +154,6 @@ export function borderAmount(x: number, z: number): number {
   return Math.max(outX, outZ, hardX);
 }
 
-export interface TerrainResult {
-  mesh: THREE.Mesh;
-  chasm: THREE.Group;
-  /** Meshes the ground raycast tests against. */
-  colliders: THREE.Mesh[];
-}
-
 /**
  * Builds the valley as one heightfield. Triangles inside the gap are left out,
  * so the ground raycast finds nothing there and the player cannot walk across
@@ -247,7 +241,7 @@ export function buildTerrain(): TerrainResult {
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
 
-  return { mesh, chasm: buildChasm(), colliders: [mesh] };
+  return { mesh, extras: [buildChasm()], colliders: [mesh] };
 }
 
 /**

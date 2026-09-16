@@ -105,6 +105,7 @@ describe('save', () => {
       volume: 0.3,
       muted: true,
       reducedMotion: true,
+      softStorm: true,
     });
     const s = loadSettings();
     expect(s.rhythm).toBe('slow');
@@ -112,6 +113,7 @@ describe('save', () => {
     expect(s.volume).toBeCloseTo(0.3);
     expect(s.muted).toBe(true);
     expect(s.reducedMotion).toBe(true);
+    expect(s.softStorm).toBe(true);
   });
 
   it('records the learning checks locally', () => {

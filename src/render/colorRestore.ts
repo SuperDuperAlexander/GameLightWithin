@@ -33,6 +33,15 @@ export const colorUniforms = {
   uGreyDim: { value: 0.8 },
   /** The colour of the rim light. It warms as the valley returns to colour. */
   uRimColor: { value: new THREE.Color(PALETTE.skyGrey) },
+  /**
+   * 0 day, 1 night. Chapter 2's last scene turns this up.
+   *
+   * Moonlight is not darkness. Night here keeps the colours the meadows have
+   * won and cools them toward the night blue, so a restored meadow still
+   * reads as restored under the moon.
+   */
+  uNight: { value: 0 },
+  uNightTint: { value: new THREE.Color(PALETTE.night) },
 };
 
 const VERT_HEAD = /* glsl */ `
@@ -52,6 +61,8 @@ uniform int uZoneCount;
 uniform float uGlobalColor;
 uniform vec3 uGreyTint;
 uniform float uGreyDim;
+uniform float uNight;
+uniform vec3 uNightTint;
 
 /** How much colour this world point has, 0 grey to 1 full. */
 float lwColorAmount(vec3 worldPos) {
@@ -83,6 +94,12 @@ const FRAG_BODY = /* glsl */ `
   float greyLum = dot(greyed, vec3(0.299, 0.587, 0.114));
   greyed *= min(1.0, (lum * uGreyDim) / max(greyLum, 1e-4));
   diffuseColor.rgb = mix(greyed, diffuseColor.rgb, lwAmount);
+  // Night: cooler and dimmer, but never flat. The colour that is there stays
+  // there, so a moonlit meadow is a moonlit meadow and not a grey one.
+  if (uNight > 0.001) {
+    vec3 moonlit = mix(diffuseColor.rgb, uNightTint * 2.2, 0.38) * 0.92;
+    diffuseColor.rgb = mix(diffuseColor.rgb, moonlit, uNight);
+  }
 }
 `;
 

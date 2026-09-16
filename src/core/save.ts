@@ -36,6 +36,24 @@ export interface LearningChecks {
   walkedAwayFromSeed: boolean;
   /** Seconds spent in each scene. */
   timePerScene: Partial<Record<SceneId, number>>;
+
+  // Chapter 2 "Be aware".
+  /** Scene 1: did the player receive at the spring without a hint? */
+  receivedWithoutSign: boolean;
+  /** Scene 2: how long the four body stones took, in seconds. */
+  bodyCheckTime: number;
+  /** Scene 3: how many times the player ran from the rain cloud. */
+  ranFromCloudCount: number;
+  /** How many names the player tried for each weather. */
+  namingAttempts: { sadness: number; anger: number; worry: number };
+  /** Scene 4: how many sound breath tones the player made. */
+  soundBreathCount: number;
+  /** Scene 4: how many times the player left the storm. */
+  leftStormCount: number;
+  /** Scene 5: which kinds of seed were planted, in order. */
+  seedTypesPlanted: ('heart' | 'mind')[];
+  /** Scene 5: was the first seed a heart seed? */
+  heartSeedFirstTry: boolean;
 }
 
 export interface SettingsData {
@@ -44,6 +62,8 @@ export interface SettingsData {
   volume: number;
   muted: boolean;
   reducedMotion: boolean;
+  /** Chapter 2: thunder and the worry whisper at a lower volume. */
+  softStorm: boolean;
 }
 
 export const DEFAULT_SAVE: SaveData = {
@@ -62,6 +82,14 @@ export const DEFAULT_CHECKS: LearningChecks = {
   leftFogCount: 0,
   walkedAwayFromSeed: false,
   timePerScene: {},
+  receivedWithoutSign: false,
+  bodyCheckTime: 0,
+  ranFromCloudCount: 0,
+  namingAttempts: { sadness: 0, anger: 0, worry: 0 },
+  soundBreathCount: 0,
+  leftStormCount: 0,
+  seedTypesPlanted: [],
+  heartSeedFirstTry: false,
 };
 
 export const DEFAULT_SETTINGS: SettingsData = {
@@ -70,6 +98,7 @@ export const DEFAULT_SETTINGS: SettingsData = {
   volume: 0.7,
   muted: false,
   reducedMotion: false,
+  softStorm: false,
 };
 
 /**

@@ -49,7 +49,7 @@ import {
   WakingMist,
   buildBird,
 } from './world/effects';
-import { terrainHeight } from './world/terrain';
+import { height as groundHeight } from './world/place';
 import { DebugPanel } from './ui/debug';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
@@ -169,23 +169,23 @@ export class Chapter1 {
 
     this.fogVolume.group.position.set(
       LAYOUT.fog.x,
-      terrainHeight(LAYOUT.fog.x, LAYOUT.fog.z),
+      groundHeight(LAYOUT.fog.x, LAYOUT.fog.z),
       LAYOUT.fog.z,
     );
     this.sprout.group.position.set(
       LAYOUT.seedSpot.x,
-      terrainHeight(LAYOUT.seedSpot.x, LAYOUT.seedSpot.z),
+      groundHeight(LAYOUT.seedSpot.x, LAYOUT.seedSpot.z),
       LAYOUT.seedSpot.z,
     );
     this.bird.position.set(
       LAYOUT.bird.x,
-      terrainHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17,
+      groundHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17,
       LAYOUT.bird.z,
     );
 
     for (const spring of this.receive.springs) {
       const glow = new SpringGlow();
-      const anchor = this.game.world.springAnchors.get(spring.config.id);
+      const anchor = this.game.world.anchors.get(spring.config.id);
       if (anchor) {
         anchor.visible = spring.revealed;
         glow.mesh.position.set(anchor.position.x, anchor.position.y + 1, anchor.position.z);
@@ -234,7 +234,7 @@ export class Chapter1 {
     this.bus.on('zoneAdded', ({ x, z, radius }) => this.game.world.color.addZone(x, z, radius));
     this.bus.on('lightCollected', ({ from, amount }) => this.onLightCollected(from, amount));
     this.bus.on('springRevealed', ({ id }) => {
-      const anchor = this.game.world.springAnchors.get(id);
+      const anchor = this.game.world.anchors.get(id);
       if (anchor) anchor.visible = true;
       this.bus.emit('cue', { id: 'spring' });
     });
@@ -249,7 +249,7 @@ export class Chapter1 {
       if (id === 'butterfly') {
         this.butterfly.fly(
           LAYOUT.butterflyPath.map(
-            (p) => new THREE.Vector3(p.x, terrainHeight(p.x, p.z) + 1.3, p.z),
+            (p) => new THREE.Vector3(p.x, groundHeight(p.x, p.z) + 1.3, p.z),
           ),
         );
       }
@@ -501,7 +501,7 @@ export class Chapter1 {
 
     const spring = this.receive.onBreath(calm, p.x, p.z);
     if (spring) {
-      const anchor = this.game.world.springAnchors.get(spring.config.id);
+      const anchor = this.game.world.anchors.get(spring.config.id);
       if (anchor) {
         // One mote per light drawn, so the player sees what they received.
         for (let i = 0; i < spring.lastGiven; i++) {
@@ -881,7 +881,7 @@ export class Chapter1 {
         const spring = this.receive.get(id);
         if (!spring) return false;
         spring.revealed = true;
-        const anchor = this.game.world.springAnchors.get(id);
+        const anchor = this.game.world.anchors.get(id);
         if (anchor) anchor.visible = true;
         return true;
       }) as (...args: any[]) => unknown,
