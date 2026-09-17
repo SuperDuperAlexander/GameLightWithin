@@ -749,6 +749,22 @@ out-breath at least as long as the target, exactly. Nobody lets go of a key on
 the exact frame, so almost no breath qualified and the storm could never be
 quietened. It now asks for 0.95 of the target, with a test for the near miss.
 
+**The end screen named the wrong chapter.** Chapter 2 finished with a
+"Chapter 2, coming soon" button — the chapter the player had just played. The
+label was a fixed string written for chapter 1's end screen. It reads the
+registry now, and a browser test holds it.
+
+**The height function was recomputing what it already knew.** The ground
+check, the slope check and the collision slide all call it several times per
+simulation step, and the terrain build calls it about thirty thousand times.
+It eases the ground flat around each place the player has to stand still, and
+it worked out the height of each of those centres inside that loop — which is
+three noise evaluations per centre, paid on every call that lands inside one.
+That is every call the player is ever actually standing on, because the
+flattened places are exactly where the scenes are. The meadows have ten of
+them. The centres are constants; they are worked out once at load now, in both
+chapters.
+
 **The chapter could finish while the player was still walking.** The auto-walk
 helper the browser tests steer with was left running when the chapter ended, so
 the walk never reported that it had arrived. A player would not have noticed,
