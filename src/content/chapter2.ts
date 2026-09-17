@@ -74,9 +74,13 @@ export const NAMING = {
 export const SOUND_BREATH = {
   /**
    * An out-breath must be at least this share of the target to make a tone.
-   * A tone is a reward for a full breath out, not for letting go early.
+   *
+   * A tone is a reward for a full breath out, not for letting go early. It is
+   * a hair under one rather than exactly one because nobody lets go of a key
+   * on the exact frame, and a breath that misses by a twentieth of a second
+   * should sing.
    */
-  minExhaleFactor: 1,
+  minExhaleFactor: 0.95,
   /** How far a tone reaches. */
   radius: 12,
   /** A pentatonic scale, in semitones above the base note. */
@@ -210,8 +214,14 @@ export const LAYOUT2 = {
   rain: { x: 0, z: -58 },
   singingStone: { x: -7, z: -68 },
   storm: { x: 0, z: -82, radius: 6.5 },
-  seedA: { x: -11, z: -100 },
-  seedB: { x: 12, z: -104 },
+  // The two seed spots and the well between them.
+  //
+  // They are this far apart on purpose. A seed only grows while the player is
+  // outside its away radius, so if the well sat within that radius of either
+  // spot, standing at the well would stop the very seed the well is there to
+  // pay for. Each spot is about 20 m from the well and 40 m from the other.
+  seedA: { x: -20, z: -98 },
+  seedB: { x: 20, z: -106 },
   lightWell: { x: 0, z: -102 },
   bird: { x: 7.5, z: -14 },
 };

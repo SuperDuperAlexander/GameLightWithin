@@ -390,11 +390,15 @@ export class Chapter1 {
           this.phase = 'endQuestions';
           if (isLastChapter(this.chapterId)) {
             this.phase = 'endQuestions';
-            this.panels.questions(this.save.endAnswers, (a) => {
-              this.save.endAnswers = a;
-              saveSave(this.save);
-              this.showEnd();
-            });
+            this.panels.questions(
+              this.save.endAnswers,
+              (a) => {
+                this.save.endAnswers = a;
+                saveSave(this.save);
+                this.showEnd();
+              },
+              true,
+            );
           } else {
             this.showEnd();
           }

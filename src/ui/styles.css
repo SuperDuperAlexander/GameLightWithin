@@ -463,7 +463,7 @@ body.lw-touch .lw-key {
 .lw-hint {
   position: absolute;
   left: 50%;
-  bottom: calc(206px + var(--safe-b));
+  bottom: calc(252px + var(--safe-b));
   transform: translateX(-50%);
   background: var(--panel);
   border-radius: 999px;
@@ -642,8 +642,12 @@ body.fading::after {
     opacity: 0;
   }
 }
+/* Reduced motion: the bird still crosses twice, but it glides. */
 @media (prefers-reduced-motion: reduce) {
   .lw-dream--on .lw-dream-bird {
     animation-timing-function: linear;
   }
+}
+.lw-dream--calm.lw-dream--on .lw-dream-bird {
+  animation-timing-function: linear;
 }

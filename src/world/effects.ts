@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PALETTE } from '../content/palette';
 import { clamp01, makeRng } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import { buildTree } from './props';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
 
@@ -441,5 +442,80 @@ export class Butterfly {
     this.group.position.lerpVectors(a, b, this.travel - i);
     this.group.position.y += Math.sin(this.time * 1.6) * 0.22;
     this.group.lookAt(b.x, this.group.position.y, b.z);
+  }
+}
+
+/**
+ * The tree a seed grows into.
+ *
+ * A heart tree rises over a couple of seconds and stays; the thanks given
+ * under it turns it golden. A mind tree rises faster, stands brighter, and
+ * then goes, which is the only place in the chapter where the two kinds of
+ * seed are told apart — and it is told by what the player sees, not by text.
+ */
+export class GrownTree {
+  readonly group = new THREE.Group();
+  private readonly tree: THREE.Group;
+  private readonly glow: THREE.Mesh;
+  /** The tree's own colours, kept so the golden blend stays reversible. */
+  private readonly colors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
+  private rise = 0;
+  private fade = 1;
+  private golden = -1;
+  private time = 0;
+  private kind: 'heart' | 'mind' = 'heart';
+
+  constructor(seed: number, blobCount: number) {
+    this.tree = buildTree(seed, blobCount);
+    this.tree.scale.setScalar(0.001);
+    this.glow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 14, 12), makeMoteMaterial(GOLD));
+    this.glow.position.y = 3.4;
+    this.glow.visible = false;
+    this.group.add(this.tree, this.glow);
+    this.group.visible = false;
+    this.group.name = 'grownTree';
+
+    this.tree.traverse((o) => {
+      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (material?.color && !this.colors.some((c) => c.material === material)) {
+        this.colors.push({ material, base: material.color.clone() });
+      }
+    });
+  }
+
+  /**
+   * @param standing whether a tree stands here at all
+   * @param kind which kind of seed grew it
+   * @param fade 1 fully there, 0 gone. Only a mind tree ever leaves.
+   */
+  setState(standing: boolean, kind: 'heart' | 'mind', fade: number): void {
+    this.group.visible = standing;
+    this.kind = kind;
+    this.fade = Math.max(0, Math.min(1, fade));
+    if (!standing) this.rise = 0;
+    // A mind tree stands brighter than a heart tree, and only while it lasts.
+    this.glow.visible = standing && kind === 'mind';
+  }
+
+  /** Blends the tree toward gold, for the thanks at the end of the chapter. */
+  setGold(t: number): void {
+    const amount = Math.max(0, Math.min(1, t));
+    if (amount === this.golden) return;
+    this.golden = amount;
+    for (const entry of this.colors) {
+      entry.material.color.copy(entry.base).lerp(GOLD, amount * 0.75);
+    }
+  }
+
+  update(dt: number): void {
+    if (!this.group.visible) return;
+    this.time += dt;
+    // A mind tree comes up fast, a heart tree takes its time.
+    const speed = this.kind === 'mind' ? 1.6 : 0.5;
+    this.rise = Math.min(1, this.rise + dt * speed);
+    const eased = this.rise * this.rise * (3 - 2 * this.rise);
+    this.tree.scale.setScalar(Math.max(0.001, eased * this.fade));
+    const mat = this.glow.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.5 * this.fade * (0.8 + Math.sin(this.time * 1.4) * 0.2);
   }
 }

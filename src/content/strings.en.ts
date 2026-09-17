@@ -22,6 +22,7 @@ export interface GameStrings {
   };
   readonly questions: {
     readonly heading: string;
+    readonly headingEnd: string;
     readonly receive: string;
     readonly calm: string;
     readonly privacy: string;
@@ -163,6 +164,7 @@ export const en: GameStrings = {
   },
   questions: {
     heading: 'Two questions before you start',
+    headingEnd: 'Two questions before you go',
     receive: 'How easy is it for you to receive help or gifts?',
     calm: 'How calm do you feel right now?',
     privacy: 'Your answers stay on this device.',

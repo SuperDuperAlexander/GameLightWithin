@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { BODY, LAYOUT2, SPRING2, STORM } from '../../src/content/chapter2';
+import { answerQuestions } from './helpers';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface Snap2 {
@@ -134,8 +135,9 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
   // ---- scene 3: the rain cloud ----
   await walk(page, LAYOUT2.rain.x, LAYOUT2.rain.z + 3);
   await until(page, (x) => x.cloudNamed, 'the cloud to be named');
-  await shot('c2-scene3-rain');
   await until(page, (x) => x.rainStep >= 3, 'the rain to let go');
+  // The rainbow, which is what the player sees when the rain lets go.
+  await shot('c2-scene3-rainbow');
 
   // ---- scene 4a: the singing stone ----
   await walk(page, LAYOUT2.singingStone.x + 1.5, LAYOUT2.singingStone.z + 1.5);
@@ -165,18 +167,28 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
 
   // ---- scene 6: night, thanks, the dream ----
   await until(page, (x) => x.night >= 1, 'night to fall');
+  // The picture of scene 6 is the player standing under the tree they grew,
+  // so it is taken there and not wherever they happened to be at nightfall.
+  await walk(page, LAYOUT2.seedB.x, LAYOUT2.seedB.z + 3);
+  await page.waitForTimeout(2500);
   await shot('c2-scene6-night');
   await walk(page, LAYOUT2.seedB.x, LAYOUT2.seedB.z);
   await until(page, (x) => x.globalColor >= 0.999, 'the meadows to turn to full colour');
   await until(page, (x) => x.phase === 'dream', 'the dream');
+  // The dream fades in over about a second, so it is given time to arrive.
+  await page.waitForTimeout(2500);
+  await expect(page.locator('.lw-dream')).toBeVisible();
   await shot('c2-dream');
 
   // ---- the learning cycle ----
   await expect(page.getByRole('button', { name: 'Sadness' })).toBeVisible({ timeout: 40_000 });
   await page.getByRole('button', { name: 'Sadness' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Next' }).click();
+  // Reflect, then the Understand card, then the Apply card.
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Next' }).click();
+  // Chapter 2 is the last chapter in this build, so the closing questions are
+  // asked here rather than at the end of chapter 1.
+  await expect(page.getByText('Two questions')).toBeVisible({ timeout: 40_000 });
+  await answerQuestions(page, 4);
   await expect(page.getByText('Chapter 2 complete.')).toBeVisible({ timeout: 40_000 });
   await shot('c2-end');
 
@@ -222,4 +234,37 @@ test('the light well gives light only while the player is short', async ({ page 
   await page.waitForTimeout(12_000);
   const later = await snap2(page);
   expect(later.light).toBeLessThanOrEqual(at.light + 1);
+});
+
+/**
+ * The naming panel, with the cloud still overhead.
+ *
+ * This runs without `?autoname=1`, so the panel really opens and is really
+ * answered. It is also where the screenshot of scene 3 comes from: the cloud
+ * raining on the player, with the question in front of it.
+ */
+test('the naming panel asks what the weather is, and never says wrong', async ({ page }, info) => {
+  test.setTimeout(600_000);
+  const tag = info.project.name;
+  await openChapter2(page, '/?chapter=2&scene=3&autobreathe=1&debug=1&quality=low');
+  await until(page, (s) => s.fps > 0, 'the first frame');
+
+  await walk(page, LAYOUT2.rain.x, LAYOUT2.rain.z + 2);
+  await until(page, (s) => s.naming, 'the naming panel to open');
+  await expect(page.getByText('What is this weather?')).toBeVisible();
+  await page.screenshot({ path: `screenshots/c2-scene3-rain-${tag}.png` });
+
+  // A name that does not fit is never called wrong.
+  await page.locator('button[data-feeling="anger"]').click();
+  await expect(page.getByText('Look again.')).toBeVisible({ timeout: 20_000 });
+  const after = await snap2(page);
+  expect(after.cloudNamed).toBe(false);
+
+  // The panel stays shut for a few seconds, then the player may try again.
+  await until(page, (s) => s.naming, 'the panel to open again', 120_000);
+  await page.locator('button[data-feeling="sadness"]').click();
+  await until(page, (s) => s.cloudNamed, 'the cloud to be named');
+  const named = await snap2(page);
+  // A name that fits takes 40 percent off, and nothing else happens.
+  expect(named.cloudIntensity).toBeLessThan(after.cloudIntensity);
 });

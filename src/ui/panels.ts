@@ -114,13 +114,16 @@ export class Panels {
   }
 
   /** The two questions, each on a 1 to 5 scale. */
-  questions(initial: Answers, onDone: (a: Answers) => void): void {
+  questions(initial: Answers, onDone: (a: Answers) => void, closing = false): void {
     const s = t();
     const answers: Answers = { receive: initial.receive, calm: initial.calm };
+    // The same two questions are asked twice: once before the first chapter
+    // and once after the last one in the build. Only the heading changes.
+    const heading = closing ? s.questions.headingEnd : s.questions.heading;
     const panel = el(
       'div',
-      { class: 'lw-panel', role: 'dialog', 'aria-label': s.questions.heading },
-      el('h2', { class: 'lw-heading' }, s.questions.heading),
+      { class: 'lw-panel', role: 'dialog', 'aria-label': heading },
+      el('h2', { class: 'lw-heading' }, heading),
     );
 
     const done = button(

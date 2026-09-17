@@ -48,7 +48,7 @@ import { SoundBreathSystem } from './systems/soundBreath';
 import { StormSystem } from './systems/storm';
 import { ThanksSystem } from './systems/thanks';
 import { FeelingWeather, shuffledFeelings } from './systems/weather';
-import { MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
+import { GrownTree, MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
 import { height as groundHeight } from './world/place';
 import { Rainbow, ToneRings, WeatherView } from './world/weatherView';
 import { DebugPanel } from './ui/debug';
@@ -105,6 +105,8 @@ export class Chapter2 implements ChapterRunner {
   private readonly bird = buildBird();
   private readonly sproutA = new Sprout();
   private readonly sproutB = new Sprout();
+  private readonly treeA: GrownTree;
+  private readonly treeB: GrownTree;
   /** The rain cloud of scene 3, and its view. */
   private readonly cloud: FeelingWeather;
   private readonly cloudView: WeatherView;
@@ -192,6 +194,8 @@ export class Chapter2 implements ChapterRunner {
     this.debug = game.flags.debug ? new DebugPanel(() => this.checks.toJson()) : null;
 
     this.motes = new MoteFlow(24);
+    this.treeA = new GrownTree(911, this.game.quality.treeBlobs);
+    this.treeB = new GrownTree(912, this.game.quality.treeBlobs);
     // The meadows are already partly in colour when the player arrives.
     this.game.world.color.setGlobalTarget(CHAPTER2.startColor, 0);
     this.buildSceneObjects();
@@ -214,6 +218,8 @@ export class Chapter2 implements ChapterRunner {
       this.toneRings.group,
       this.sproutA.group,
       this.sproutB.group,
+      this.treeA.group,
+      this.treeB.group,
       this.bird,
     );
 
@@ -230,11 +236,13 @@ export class Chapter2 implements ChapterRunner {
       this.wellGlow.mesh.position.set(well.position.x, well.position.y + 0.9, well.position.z);
     }
 
-    for (const [sprout, spot] of [
-      [this.sproutA, LAYOUT2.seedA],
-      [this.sproutB, LAYOUT2.seedB],
+    for (const [sprout, tree, spot] of [
+      [this.sproutA, this.treeA, LAYOUT2.seedA],
+      [this.sproutB, this.treeB, LAYOUT2.seedB],
     ] as const) {
-      sprout.group.position.set(spot.x, groundHeight(spot.x, spot.z), spot.z);
+      const y = groundHeight(spot.x, spot.z);
+      sprout.group.position.set(spot.x, y, spot.z);
+      tree.group.position.set(spot.x, y, spot.z);
     }
 
     this.stormView.group.position.set(
@@ -435,11 +443,15 @@ export class Chapter2 implements ChapterRunner {
         this.panels.card(t().apply2.card, () => {
           if (isLastChapter(this.chapterId)) {
             this.phase = 'endQuestions';
-            this.panels.questions(this.save.endAnswers, (a) => {
-              this.save.endAnswers = a;
-              saveSave(this.save);
-              this.showEnd();
-            });
+            this.panels.questions(
+              this.save.endAnswers,
+              (a) => {
+                this.save.endAnswers = a;
+                saveSave(this.save);
+                this.showEnd();
+              },
+              true,
+            );
           } else {
             this.showEnd();
           }
@@ -501,6 +513,7 @@ export class Chapter2 implements ChapterRunner {
     this.game.setReducedMotion(next.reducedMotion);
     this.hud.breathCircle.reducedMotion = next.reducedMotion;
     this.cloudView.reducedMotion = next.reducedMotion;
+    this.dream.reducedMotion = next.reducedMotion;
     this.stormView.reducedMotion = next.reducedMotion;
     this.game.setAutoQuality(next.quality === 'auto');
     if (next.quality !== 'auto') this.game.setQuality(next.quality);
@@ -703,6 +716,8 @@ export class Chapter2 implements ChapterRunner {
     this.wellGlow.update(dt);
     this.sproutA.update(dt);
     this.sproutB.update(dt);
+    this.treeA.update(dt);
+    this.treeB.update(dt);
 
     this.updateHud(dt, p.x, p.z);
     this.updateSky();
@@ -926,6 +941,18 @@ export class Chapter2 implements ChapterRunner {
     // The two seeds, and the rainbow over the meadow where the rain let go.
     this.sproutA.setState(this.seedA.state === 'growing', this.seedA.progress, this.seedA.paused);
     this.sproutB.setState(this.seedB.state === 'growing', this.seedB.progress, this.seedB.paused);
+    // A grown seed is a tree standing in the meadow. A mind tree fades out
+    // over its last ten seconds, so the player watches it go.
+    for (const [seed, tree] of [
+      [this.seedA, this.treeA],
+      [this.seedB, this.treeB],
+    ] as const) {
+      const standing = seed.state === 'grown';
+      const left = SEEDS2.mindSeedFadeSeconds - seed.fadeTime;
+      const fade = seed.kind === 'mind' ? clamp01(left / 10) : 1;
+      tree.setState(standing, seed.kind, fade);
+      if (seed.heartTreeStanding) tree.setGold(this.thanks.golden);
+    }
     this.rainbow.setAmount(
       this.rainStep >= 3 ? clamp01(this.rainbowTime / 1.5) * clamp01(3 - this.rainbowTime / 3) : 0,
     );

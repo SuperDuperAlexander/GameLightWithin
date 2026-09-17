@@ -52,6 +52,15 @@ export class WeatherView {
         uPulse: { value: type === 'anger' ? 1 : 0 },
         /** 0 no flicker, 1 the quick flicker of worry. */
         uFlicker: { value: type === 'worry' ? 1 : 0 },
+        /**
+         * How far toward pale grey the colour is lifted, and how bright it is.
+         *
+         * Sadness is a pale, heavy rain cloud, so it lifts. Anger is a dark
+         * bank: lifting it turns the deep red-violet of the brief into pink,
+         * which reads as a sunset rather than as anger. Worry sits between.
+         */
+        uLift: { value: type === 'sadness' ? 0.34 : type === 'anger' ? 0.0 : 0.18 },
+        uTone: { value: type === 'anger' ? 0.52 : type === 'worry' ? 0.86 : 1.0 },
       },
       vertexShader: /* glsl */ `
         precision highp float;
@@ -74,6 +83,8 @@ export class WeatherView {
         uniform float uTime;
         uniform float uPulse;
         uniform float uFlicker;
+        uniform float uLift;
+        uniform float uTone;
         void main() {
           float facing = abs(dot(normalize(vN), normalize(vV)));
           float soft = pow(1.0 - facing, 0.6);
@@ -83,9 +94,9 @@ export class WeatherView {
           float pulse = 1.0 + uPulse * 0.22 * sin(uTime * 1.6);
           // Worry shimmers at a rate that stays under three a second.
           float flick = 1.0 + uFlicker * 0.14 * sin(uTime * 8.0 + vL.x * 3.0);
-          float a = (1.0 - soft) * 0.3 * uDensity * drift;
-          vec3 col = mix(uColor, vec3(0.62, 0.66, 0.78), 0.2) * (0.8 + 0.3 * facing);
-          col *= pulse * flick;
+          float a = (1.0 - soft) * mix(0.3, 0.42, 1.0 - uTone) * uDensity * drift;
+          vec3 col = mix(uColor, vec3(0.62, 0.66, 0.78), uLift) * (0.8 + 0.3 * facing);
+          col *= pulse * flick * uTone;
           // The same aerial perspective the rest of the world has. Without it
           // a storm eighty metres off keeps its full colour while every hill
           // around it has hazed away, and it reads as a painted block.

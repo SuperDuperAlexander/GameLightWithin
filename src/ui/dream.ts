@@ -16,6 +16,8 @@ import { el, svgEl } from './dom';
  */
 export class DreamView {
   readonly root: HTMLElement;
+  /** The in-game setting, which is not the same as the browser's own. */
+  reducedMotion = false;
 
   constructor() {
     const svg = svgEl('svg', {
@@ -91,10 +93,10 @@ export class DreamView {
 
     // The bird. It crosses the roof of the tallest house, twice.
     const bird = svgEl('path', {
-      d: 'M-9 0 Q -4 -5 0 0 Q 4 -5 9 0',
+      d: 'M-6 0 Q -3 -3.4 0 0 Q 3 -3.4 6 0',
       fill: 'none',
       stroke: PALETTE.stars,
-      'stroke-width': '2',
+      'stroke-width': '1.6',
       'stroke-linecap': 'round',
       class: 'lw-dream-bird',
     });
@@ -111,6 +113,7 @@ export class DreamView {
     this.root.classList.remove('lw-dream--on');
     void this.root.offsetWidth;
     this.root.style.setProperty('--lw-dream-seconds', `${String(NIGHT.dreamSeconds)}s`);
+    this.root.classList.toggle('lw-dream--calm', this.reducedMotion);
     this.root.classList.add('lw-dream--on');
   }
 

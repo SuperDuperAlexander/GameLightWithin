@@ -33,6 +33,11 @@ describe('sound breath', () => {
     expect(ready().onBreath(true, TARGET * 0.6, TARGET)).toBeNull();
   });
 
+  /** Nobody lets go of a key on the exact frame. A near miss still sings. */
+  it('forgives a breath that misses the target by a hair', () => {
+    expect(ready().onBreath(true, TARGET * SOUND_BREATH.minExhaleFactor, TARGET)).not.toBeNull();
+  });
+
   /** Each tone is the next note of the scale, so a row of them is a tune. */
   it('climbs the pentatonic scale', () => {
     const s = ready();

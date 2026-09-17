@@ -53,6 +53,7 @@ export class World {
   private envScene: THREE.Scene | null = null;
   private envTarget: THREE.WebGLRenderTarget | null = null;
   private envColorAtBuild = -1;
+  private envNightAtBuild = -1;
   /** The chapter writes the player's ground speed here for the walk cycle. */
   playerSpeed = 0;
   /** 0 day, 1 night. Chapter 2 turns this up for its last scene. */
@@ -190,7 +191,13 @@ export class World {
     // The sky light is what makes a moonlit meadow read as moonlit rather
     // than as a dark photograph of a day, so it is turned up, not down.
     this.scene.environmentIntensity = 0.35 + n * 0.75;
-    this.refreshEnvironment();
+    // Re-filtering the sky is the single most expensive thing this class can
+    // do. Night falls over several seconds, so refreshing on every step meant
+    // one full PMREM pass per frame and the renderer stopped keeping up. It
+    // is done in steps large enough to see, like the colour drift below.
+    if (Math.abs(n - this.envNightAtBuild) > 0.12 || n === 0 || n === 1) {
+      this.refreshEnvironment();
+    }
   }
 
   /** 0 morning, 1 evening. The chapter 2 sky runs one slow day. */
@@ -238,6 +245,7 @@ export class World {
     this.scene.environment = this.envTarget.texture;
     this.scene.environmentIntensity = 0.35 + this.night * 0.75;
     this.envColorAtBuild = this.color.globalColor;
+    this.envNightAtBuild = this.night;
   }
 
   /** Applies a quality tier to everything that can change during play. */
