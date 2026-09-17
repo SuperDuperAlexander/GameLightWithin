@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PLAYER } from '../content/chapter1';
-import { terrainHeight } from './terrain';
+import { height } from './place';
 
 const RAY_HEIGHT = 60;
 
@@ -53,9 +53,9 @@ export class Ground {
 
   /** Surface steepness at a point, as the cosine between the normal and up. */
   slopeCosAt(x: number, z: number): number {
-    const h = terrainHeight(x, z);
-    const dx = terrainHeight(x + 0.6, z) - h;
-    const dz = terrainHeight(x, z + 0.6) - h;
+    const h = height(x, z);
+    const dx = height(x + 0.6, z) - h;
+    const dz = height(x, z + 0.6) - h;
     return 1 / Math.sqrt(1 + (dx / 0.6) ** 2 + (dz / 0.6) ** 2);
   }
 

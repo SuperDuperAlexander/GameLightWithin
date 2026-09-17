@@ -109,12 +109,12 @@ describe('TransformSystem', () => {
     expect(fog.done).toBe(false);
   });
 
-  it('caps the extra breaths from pushing at plus 2', () => {
+  it('caps the extra breaths from pushing', () => {
     fog.update(0.1, 0, 4);
     for (let i = 0; i < 6; i++) fog.push();
     expect(fog.pushCount).toBe(6);
     expect(fog.pushExtra).toBe(TRANSFORM.pushExtraBreathsMax);
-    expect(fog.centerBreathsNeeded).toBe(TRANSFORM.centerBreaths + 2);
+    expect(fog.centerBreathsNeeded).toBe(TRANSFORM.centerBreaths + TRANSFORM.pushExtraBreathsMax);
   });
 
   it('needs the extra pushed breaths before it dissolves', () => {

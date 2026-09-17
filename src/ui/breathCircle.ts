@@ -14,8 +14,8 @@ const R_DISC_MIN = 5;
  *
  * The thin ring shows the target rhythm: it grows on the in-breath and shrinks
  * on the out-breath. The filled circle follows what the player is doing.
- * `circleStrength` keeps the strong outline of chapter 1 tunable for later
- * chapters, where the scaffolding can fade.
+ * The strength of both outlines is set by the chapter, so the scaffolding can
+ * fade as the player learns: chapter 1 draws it fully, chapter 2 quietly.
  */
 export class BreathCircle {
   readonly root: HTMLElement;
@@ -26,7 +26,7 @@ export class BreathCircle {
   private tremble = 0;
   reducedMotion = false;
 
-  constructor() {
+  constructor(strength: number = BREATH.circleStrength) {
     const svg = svgEl('svg', { viewBox: `0 0 ${SIZE} ${SIZE}`, 'aria-hidden': 'true' });
 
     this.glowRing = svgEl('circle', {
@@ -42,7 +42,7 @@ export class BreathCircle {
       r: String(R_BASE),
       fill: 'none',
       stroke: 'rgba(35, 38, 43, 0.62)',
-      'stroke-width': String(2.6 * BREATH.circleStrength),
+      'stroke-width': String(2.6 * strength),
       'stroke-dasharray': '4 6',
       'stroke-linecap': 'round',
     });
@@ -52,7 +52,7 @@ export class BreathCircle {
       r: String(R_BASE),
       fill: 'none',
       stroke: 'rgba(196, 146, 40, 0.95)',
-      'stroke-width': String(3.2 * BREATH.circleStrength),
+      'stroke-width': String(3.2 * strength),
       'stroke-linecap': 'round',
     });
     svg.append(this.glowRing, this.targetRing, this.playerRing);
@@ -74,17 +74,27 @@ export class BreathCircle {
   /**
    * @param target 0 to 1 target ring size
    * @param player 0 to 1 the size the player is holding
-   * @param targetInhaling whether the target rhythm is breathing in
+   * @param inhaling whether the player should be breathing in
    * @param time seconds, for the tremble
    */
-  update(target: number, player: number, targetInhaling: boolean, time: number): void {
+  update(target: number, player: number, inhaling: boolean, time: number): void {
     const shake = this.tremble > 0 ? Math.sin(time * 21) * this.tremble * 1.6 : 0;
     const rt = R_BASE + (R_FULL - R_BASE) * clamp01(target) + shake;
     const rp = R_DISC_MIN + (R_FULL - R_DISC_MIN) * clamp01(player);
     this.targetRing.setAttribute('r', rt.toFixed(2));
     this.playerRing.setAttribute('r', rp.toFixed(2));
     this.glowRing.setAttribute('r', (rp * 0.9).toFixed(2));
-    const want = targetInhaling ? t().hud.breatheIn : t().hud.breatheOut;
+    // On a keyboard the label names the key, because there is no button to
+    // read. On touch the buttons say it themselves.
+    const touch = document.body.classList.contains('lw-touch');
+    const s = t().hud;
+    const want = inhaling
+      ? touch
+        ? s.breatheIn
+        : s.breatheInKeys
+      : touch
+        ? s.breatheOut
+        : s.breatheOutKeys;
     if (this.label.textContent !== want) this.label.textContent = want;
   }
 

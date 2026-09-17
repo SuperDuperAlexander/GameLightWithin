@@ -33,6 +33,21 @@ mid-range laptop and 30 fps on a mid-range Android phone. Open it with
 `?debug=1` and read the `fps` and `tier` lines in the panel. If the tier drops
 on its own, the watchdog decided the device could not keep up at that tier.
 
+## Controls
+
+|                 | Keyboard       | Touch                 |
+| --------------- | -------------- | --------------------- |
+| Walk            | WASD or arrows | Joystick, bottom left |
+| Breathe in      | Hold space     | Breathe in button     |
+| Breathe out     | Hold shift     | Breathe out button    |
+| Turn the camera | Drag the mouse | Drag the screen       |
+| Push            | E              | Push button           |
+| Plant           | Enter          | Plant button          |
+| Pause           | Esc            | Pause button          |
+
+You can walk from the first second. Your stride is short until your first
+finished breath, then it opens up and stays open.
+
 ## Debug
 
 | Parameter                    | What it does                                                                         |

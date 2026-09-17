@@ -11,8 +11,10 @@ export class InputState {
   moveX = 0;
   /** -1 to 1, back to forward. */
   moveY = 0;
-  /** True while the breath button is held. */
-  breathHeld = false;
+  /** True while the breathe-in key or button is held. */
+  breathInHeld = false;
+  /** True while the breathe-out key or button is held. */
+  breathOutHeld = false;
   /** Camera turn asked for this frame, in radians. */
   yawDelta = 0;
   pitchDelta = 0;
@@ -37,7 +39,8 @@ export class InputState {
   /** Set by the virtual joystick and the on-screen buttons. */
   touchMoveX = 0;
   touchMoveY = 0;
-  touchBreath = false;
+  touchBreathIn = false;
+  touchBreathOut = false;
 
   /** Called when the joystick moves, so the UI can draw the knob. */
   onJoystick: ((x: number, y: number, active: boolean) => void) | null = null;
@@ -50,6 +53,8 @@ export class InputState {
       if (e.key === 'Tab') return;
       this.keys.add(e.code);
       if (e.code === 'Space') e.preventDefault();
+      // Holding Shift must not start the browser's text selection mode.
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') e.preventDefault();
       if (e.code === 'KeyE') this.pushPressed = true;
       if (e.code === 'Escape') this.pausePressed = true;
       if (e.code === 'Enter' && e.target === document.body) this.interactPressed = true;
@@ -149,7 +154,8 @@ export class InputState {
       this.keys.clear();
       this.dragPointer = null;
       this.endJoystick();
-      this.touchBreath = false;
+      this.touchBreathIn = false;
+      this.touchBreathOut = false;
     }
   }
 
@@ -158,7 +164,8 @@ export class InputState {
     if (!this.enabled) {
       this.moveX = 0;
       this.moveY = 0;
-      this.breathHeld = false;
+      this.breathInHeld = false;
+      this.breathOutHeld = false;
       return;
     }
     let x = this.touchMoveX;
@@ -174,7 +181,11 @@ export class InputState {
     }
     this.moveX = x;
     this.moveY = y;
-    this.breathHeld = this.keys.has('Space') || this.touchBreath;
+    // Space breathes in, either Shift breathes out. Two keys, because the
+    // out-breath is an action of its own, not the absence of one.
+    this.breathInHeld = this.keys.has('Space') || this.touchBreathIn;
+    this.breathOutHeld =
+      this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.touchBreathOut;
   }
 
   /** Clears the one-frame flags. Call at the end of each frame. */

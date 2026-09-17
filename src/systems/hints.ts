@@ -15,7 +15,11 @@ export class HintSystem {
   /** True when the player found the hidden spring before the bird landed. */
   foundBeforeHint = false;
 
-  constructor(private readonly bus: EventBus) {
+  constructor(
+    private readonly bus: EventBus,
+    /** How long the player may walk past before the bird lands. */
+    private readonly birdAfterSeconds: number = HINTS.birdAfterSeconds,
+  ) {
     bus.on('breathCompleted', ({ calm }) => {
       if (calm) this.restlessSeconds = 0;
     });
@@ -29,7 +33,7 @@ export class HintSystem {
     }
     if (this.birdShown) return;
     this.restlessSeconds += dt;
-    if (this.restlessSeconds >= HINTS.birdAfterSeconds) {
+    if (this.restlessSeconds >= this.birdAfterSeconds) {
       this.birdShown = true;
       this.bus.emit('hintShown', { id: 'bird' });
     }

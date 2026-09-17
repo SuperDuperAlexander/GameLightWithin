@@ -13,6 +13,12 @@ export const PALETTE = {
   farHillsViolet: '#B9A7D8',
   heartRose: '#E98BA3',
   warmSky: '#F5DCC0',
+  // Chapter 2 "Be aware": the feeling weathers, and the night.
+  sadness: '#7F93A8',
+  anger: '#9C4F6B',
+  worry: '#B8B86A',
+  night: '#1F2A44',
+  stars: '#F6EBD0',
 } as const;
 
 export type PaletteKey = keyof typeof PALETTE;

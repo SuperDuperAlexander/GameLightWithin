@@ -45,8 +45,15 @@ export class FollowCamera {
     return out.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).normalize();
   }
 
+  /**
+   * The direction the player walks when they press right.
+   *
+   * This is `forward` crossed with up, which in Three.js's right-handed
+   * coordinates is (-cos yaw, 0, sin yaw). It used to be the negative of that,
+   * so A walked right and D walked left.
+   */
   right(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
+    return out.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw)).normalize();
   }
 
   /** Snaps straight to the target. Used when a scene starts. */

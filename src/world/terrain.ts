@@ -3,7 +3,8 @@ import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
-import { applyColorRestore } from '../render/colorRestore';
+import { worldMaterial } from '../render/materials';
+import type { TerrainResult } from './place';
 
 // three-mesh-bvh drives both the ground checks and the prop collision.
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
@@ -25,6 +26,62 @@ export function valleyHalfWidth(z: number): number {
   // Scene 5 has a side path out to the third spring.
   w += 13 * Math.exp(-Math.pow((z + 79) / 9, 2));
   return Math.max(6, w);
+}
+
+/** Shortest distance from a point to a line between two points, on the floor. */
+function distToSegment(
+  x: number,
+  z: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  const len2 = dx * dx + dz * dz || 1;
+  const t = clamp01(((x - ax) * dx + (z - az) * dz) / len2);
+  return Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+}
+
+/**
+ * How much of a walked track there is at this point, 0 none to 1 bare earth.
+ *
+ * The brief says a path leads to the dry spring. Without one the valley is an
+ * even meadow and the player has nothing to follow. The track is drawn into
+ * the terrain's vertex colours and it keeps the grass off itself, so it costs
+ * no extra geometry. There is deliberately **no** track to the second spring:
+ * that one is meant to be found by stopping, not by following.
+ */
+export function pathAmount(x: number, z: number): number {
+  let best = Infinity;
+
+  // The main track runs the length of the valley and stops at the gap.
+  if (z < WORLD.lengthStart + 6 && z > LAYOUT.gap.z1 - 1) {
+    // Follow the wandering centre line in short straight pieces.
+    const step = 4;
+    const zi = Math.floor(z / step) * step;
+    for (const z0 of [zi - step, zi, zi + step]) {
+      const z1 = z0 + step;
+      best = Math.min(best, distToSegment(x, z, pathCenterX(z0), z0, pathCenterX(z1), z1));
+    }
+  }
+
+  // A short branch off to the dry spring and its sign stone.
+  best = Math.min(
+    best,
+    distToSegment(x, z, pathCenterX(-24), -24, LAYOUT.spring1.x, LAYOUT.spring1.z + 1.5),
+  );
+
+  // The side path out to the third spring, which the seed needs.
+  best = Math.min(
+    best,
+    distToSegment(x, z, pathCenterX(-79), -79, LAYOUT.spring3.x - 2, LAYOUT.spring3.z),
+  );
+
+  // Soft, uneven edges, so it reads as trodden rather than drawn.
+  const wobble = fbm2d(x * 0.25, z * 0.25, 2, 31) * 0.9;
+  return 1 - smoothstep(1.0 + wobble, 2.3 + wobble, best);
 }
 
 /** True inside the gap that stops the path in scene 5. */
@@ -57,12 +114,7 @@ export function terrainHeight(x: number, z: number): number {
   h += softCap(beyond * beyond * 0.018 + beyond * 0.3, 12);
 
   // The floor is flattened where the player has to stand still.
-  h = flattenAround(h, x, z, LAYOUT.spring1.x, LAYOUT.spring1.z, 7);
-  h = flattenAround(h, x, z, LAYOUT.spring2.x, LAYOUT.spring2.z, 8);
-  h = flattenAround(h, x, z, LAYOUT.spring3.x, LAYOUT.spring3.z, 7);
-  h = flattenAround(h, x, z, LAYOUT.fog.x, LAYOUT.fog.z, 9);
-  h = flattenAround(h, x, z, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z, 8);
-  h = flattenAround(h, x, z, LAYOUT.playerStart.x, LAYOUT.playerStart.z, 8);
+  for (const spot of FLAT_SPOTS) h = flattenAround(h, x, z, spot);
   return h;
 }
 
@@ -71,20 +123,36 @@ function softCap(value: number, ceiling: number): number {
   return ceiling * (1 - Math.exp(-value / ceiling));
 }
 
-/** Eases the ground toward its centre height inside a radius. */
+/**
+ * Every place the ground is eased flat, with each centre's height worked out
+ * once at load rather than on every call.
+ *
+ * The height function is the hottest thing in the game: the ground check, the
+ * slope check and the collision slide all call it several times per step.
+ */
+const FLAT_SPOTS: { x: number; z: number; radius: number; centre: number }[] = [
+  { x: LAYOUT.spring1.x, z: LAYOUT.spring1.z, radius: 7 },
+  { x: LAYOUT.spring2.x, z: LAYOUT.spring2.z, radius: 8 },
+  { x: LAYOUT.spring3.x, z: LAYOUT.spring3.z, radius: 7 },
+  { x: LAYOUT.fog.x, z: LAYOUT.fog.z, radius: 9 },
+  { x: LAYOUT.seedSpot.x, z: LAYOUT.seedSpot.z, radius: 8 },
+  { x: LAYOUT.playerStart.x, z: LAYOUT.playerStart.z, radius: 8 },
+].map((spot) => ({
+  ...spot,
+  centre: fbm2d(spot.x * 0.028 + 40, spot.z * 0.028 + 40, 4, 7) * 2.6 - 1.3,
+}));
+
+/** Eases the ground toward a spot's own height inside its radius. */
 function flattenAround(
   h: number,
   x: number,
   z: number,
-  cx: number,
-  cz: number,
-  radius: number,
+  spot: { x: number; z: number; radius: number; centre: number },
 ): number {
-  const d = Math.hypot(x - cx, z - cz);
-  const t = 1 - smoothstep(radius * 0.4, radius, d);
+  const d = Math.hypot(x - spot.x, z - spot.z);
+  const t = 1 - smoothstep(spot.radius * 0.4, spot.radius, d);
   if (t <= 0) return h;
-  const centre = fbm2d(cx * 0.028 + 40, cz * 0.028 + 40, 4, 7) * 2.6 - 1.3;
-  return h * (1 - t) + centre * t;
+  return h * (1 - t) + spot.centre * t;
 }
 
 /** How far outside the soft border a point is, 0 inside, 1 fully outside. */
@@ -95,13 +163,6 @@ export function borderAmount(x: number, z: number): number {
   const outZ = clamp01(Math.max(z - WORLD.lengthStart, WORLD.lengthEnd - z) / WORLD.borderSoftness);
   const hardX = clamp01((Math.abs(x) - WORLD.halfWidth) / WORLD.borderSoftness + 1);
   return Math.max(outX, outZ, hardX);
-}
-
-export interface TerrainResult {
-  mesh: THREE.Mesh;
-  chasm: THREE.Group;
-  /** Meshes the ground raycast tests against. */
-  colliders: THREE.Mesh[];
 }
 
 /**
@@ -125,6 +186,9 @@ export function buildTerrain(): TerrainResult {
   const green = new THREE.Color(PALETTE.growthGreen);
   const deep = new THREE.Color(PALETTE.deepGreen);
   const violet = new THREE.Color(PALETTE.farHillsViolet);
+  const earth = new THREE.Color(0xa08a68);
+  const meadow = new THREE.Color(PALETTE.growthGreen).lerp(new THREE.Color(0xd6e07a), 0.4);
+  const straw = new THREE.Color(0xc9b478);
   const tmp = new THREE.Color();
 
   for (let iz = 0; iz <= segZ; iz++) {
@@ -136,11 +200,25 @@ export function buildTerrain(): TerrainResult {
 
       // Light is baked into the vertex colours instead of a shadow map.
       const slope = terrainHeight(x + 1, z) - y;
-      const shade = clamp(0.54 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.32, 0.42, 1);
+      const shade = clamp(0.56 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.3, 0.46, 1);
       const height01 = clamp01((y + 2) / 16);
       tmp.copy(deep).lerp(green, clamp01(1.15 - height01 * 1.4));
       tmp.lerp(violet, clamp01((height01 - 0.45) * 1.6));
-      tmp.multiplyScalar(shade);
+
+      // Patches. A single flat green reads as a plane no matter how it is lit,
+      // so the ground carries broad drifts of lighter and drier growth on top
+      // of finer mottling. This is the cheapest way to make ground look like
+      // ground: it costs nothing at run time, only vertex colours.
+      const drift = fbm2d(x * 0.035 + 11, z * 0.035 + 7, 3, 43);
+      tmp.lerp(meadow, clamp01((drift - 0.42) * 1.9));
+      const dry = fbm2d(x * 0.021 + 61, z * 0.021 + 29, 2, 77);
+      tmp.lerp(straw, clamp01((dry - 0.58) * 1.7) * 0.75);
+      const mottle = 0.9 + fbm2d(x * 0.55, z * 0.55, 2, 91) * 0.22;
+
+      tmp.multiplyScalar(shade * mottle);
+      // The walked track shows the earth under the grass.
+      const track = pathAmount(x, z);
+      if (track > 0) tmp.lerp(earth, track * 0.85);
       colors.push(tmp.r, tmp.g, tmp.b);
     }
   }
@@ -166,15 +244,15 @@ export function buildTerrain(): TerrainResult {
   geo.computeVertexNormals();
   geo.computeBoundsTree();
 
-  const material = applyColorRestore(
-    new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: false }),
-  );
+  // A low rim on the ground: enough to catch the hill edges against the sky,
+  // not so much that the whole meadow glows.
+  const material = worldMaterial({ vertexColors: true, rim: 0.07 });
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = 'terrain';
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
 
-  return { mesh, chasm: buildChasm(), colliders: [mesh] };
+  return { mesh, extras: [buildChasm()], colliders: [mesh] };
 }
 
 /**
@@ -195,9 +273,7 @@ function buildChasm(): THREE.Group {
 
   // Everything down here sits in shadow, so the colours stay very dark.
   const rock = new THREE.Color(PALETTE.blockage).multiplyScalar(0.12);
-  const wallMat = applyColorRestore(
-    new THREE.MeshLambertMaterial({ color: rock, flatShading: true }),
-  );
+  const wallMat = worldMaterial({ color: rock, rim: 0.02 });
 
   const floorGeo = new THREE.PlaneGeometry(width + 2, depth + 2, 6, 6);
   floorGeo.rotateX(-Math.PI / 2);

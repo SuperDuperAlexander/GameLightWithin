@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LAYOUT } from '../../src/content/chapter1';
-import { answerQuestions, call, snap, startChapter, waitForSnap, walkTo } from './helpers';
+import { answerQuestions, beginChapter, call, snap, startChapter, waitForSnap, walkTo } from './helpers';
 
 /**
  * A full run of chapter 1, from the start screen to the chapter end screen,
@@ -34,9 +34,9 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await startChapter(page, '/?autobreathe=1&debug=1&quality=low');
 
   // ---- start screen ----
-  await expect(page.getByRole('button', { name: 'Begin' })).toBeVisible();
+  await expect(page.locator('button[data-chapter="1"]')).toBeVisible();
   await shot('scene0-start');
-  await page.getByRole('button', { name: 'Begin' }).click();
+  await beginChapter(page);
 
   // ---- the two opening questions ----
   await expect(page.getByText('Your answers stay on this device.')).toBeVisible();
@@ -140,13 +140,12 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('after3-apply');
   await page.getByRole('button', { name: 'Next' }).click();
 
-  await expect(page.getByText('Your answers stay on this device.')).toBeVisible();
-  await shot('after4-end-questions');
-  await answerQuestions(page, 4);
-
+  // The closing questions are asked once, after the last chapter in the build,
+  // so chapter 1 now goes straight to its end screen.
   await expect(page.getByText('Chapter 1 complete.')).toBeVisible();
-  await shot('after5-chapter-end');
-  await expect(page.getByRole('button', { name: /Chapter 2/ })).toBeDisabled();
+  await shot('after4-chapter-end');
+  // And the end screen offers the walk on into chapter 2.
+  await expect(page.locator('button[data-next-chapter="2"]')).toBeEnabled();
 
   expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([]);
 });

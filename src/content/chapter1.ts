@@ -15,15 +15,34 @@ export interface RhythmPreset {
   readonly tolerance: number;
 }
 
+/**
+ * The rhythms.
+ *
+ * These are shorter than a breathing practice would use on purpose. A four
+ * second in-breath and a six second out-breath is a fine thing to sit with,
+ * but in a game it is ten seconds of holding a key before anything happens,
+ * and the player feels the wait rather than the breath. `slow` keeps the
+ * longer rhythm for anyone who wants it.
+ */
 export const RHYTHM_PRESETS: Record<RhythmPreset['id'], RhythmPreset> = {
-  normal: { id: 'normal', inhale: 4, exhale: 6, tolerance: 0.3 },
-  slow: { id: 'slow', inhale: 5, exhale: 7, tolerance: 0.3 },
-  easy: { id: 'easy', inhale: 3, exhale: 4, tolerance: 0.45 },
+  normal: { id: 'normal', inhale: 3, exhale: 4, tolerance: 0.35 },
+  slow: { id: 'slow', inhale: 4, exhale: 6, tolerance: 0.3 },
+  easy: { id: 'easy', inhale: 2, exhale: 3, tolerance: 0.45 },
 };
 
 export const BREATH = {
   /** Movement faster than this counts as walking and resets the breath. */
   walkResetSpeed: 0.25,
+  /**
+   * Calm breaths needed to wake the glow in scene 1. One is enough: the point
+   * is to feel the first breath land, not to drill a count.
+   */
+  wakeBreaths: 1,
+  /**
+   * Seconds the game waits between the in-breath ending and the out-breath
+   * starting before it gives up on the breath.
+   */
+  holdGraceFactor: 2,
   /** Outline strength of the breath circle. 1.0 in chapter 1, lower in later chapters. */
   circleStrength: 1.0,
   /** A breath shorter than this is treated as a mis-tap, not a breath. */
@@ -59,9 +78,15 @@ export const RECEIVE = {
   /** A hidden spring reveals itself after calm breaths taken inside this radius. */
   revealRadius: 6,
   /** Calm breaths needed inside `revealRadius` to reveal a hidden spring. */
-  revealBreaths: 2,
+  revealBreaths: 1,
+  /**
+   * Light a spring gives per calm breath. A spring holds three, so one calm
+   * breath empties it. Standing still for a whole breath is the moment that
+   * matters; repeating it three times only adds waiting.
+   */
+  lightPerBreath: 3,
   /** Seconds a light mote takes to travel from spring to player. */
-  moteFlightSeconds: 1.6,
+  moteFlightSeconds: 1,
   /** Radius of the colour zone a spent spring leaves behind. */
   zoneRadius: 16,
 } as const;
@@ -70,15 +95,19 @@ export const TRANSFORM = {
   /** Step 1 "see it" starts inside this radius. */
   seeRadius: 8,
   /** Seconds the thought text needs to appear fully. Cannot be skipped. */
-  seeSeconds: 4,
+  seeSeconds: 2.5,
   /** Step 2 "feel it" starts inside this radius. */
   feelRadius: 5,
   /** Calm breaths needed for step 2. */
-  feelBreaths: 2,
+  feelBreaths: 1,
   /** Step 3 "become one" starts inside this radius of the fog centre. */
   centerRadius: 2,
-  /** Calm breaths needed for step 3. */
-  centerBreaths: 3,
+  /**
+   * Calm breaths needed for step 3. One, like every other gate: the fog
+   * already asks the player to see it, stand in the wind, and walk into the
+   * middle. Asking for a second breath on top only adds waiting.
+   */
+  centerBreaths: 1,
   /** Leaving `seeRadius` before step 3 ends grows the fog by this factor. */
   fleeGrowth: 0.1,
   /** The fog never grows by more than this in total. */
@@ -88,7 +117,7 @@ export const TRANSFORM = {
   /** Each push adds this many calm breaths to step 3. */
   pushExtraBreaths: 1,
   /** Pushing never adds more than this many breaths. Push never works. */
-  pushExtraBreathsMax: 2,
+  pushExtraBreathsMax: 1,
   /** Seconds the fog takes to dissolve into motes. */
   dissolveSeconds: 2.5,
   /** Light released when the fog dissolves. */
@@ -118,7 +147,7 @@ export const MANIFEST = {
 
 export const THANKS = {
   /** Calm breaths needed on the finished bridge. */
-  breaths: 3,
+  breaths: 1,
   /** Seconds the global colour takes to reach 1. */
   colorSeconds: 6,
   /** The player counts as standing on the bridge inside this radius. */
@@ -146,6 +175,23 @@ export const COLOR = {
 
 export const PLAYER = {
   walkSpeed: 4.2,
+  /**
+   * How fast the player walks before their first breath. They are never held
+   * still: they can set off at once, just heavily, as if not yet awake. The
+   * first finished breath gives them their full stride, and keeps it.
+   */
+  wakingWalkFactor: 0.4,
+  /** Seconds the stride takes to open up after that first breath. */
+  wakingEaseSeconds: 2.5,
+  /** Radius of the mist the player wakes inside, in metres. */
+  wakingMistRadius: 9,
+  /**
+   * Pushing on without stopping thickens the mist by this much per second,
+   * up to the cap. Stopping lets it settle back. It is a nudge, never a wall.
+   */
+  wakingMistGainPerSecond: 0.05,
+  wakingMistMax: 1,
+  wakingMistBase: 0.34,
   /** How fast the player turns toward the movement direction, radians per second. */
   turnSpeed: 7,
   /** Slopes steeper than this cosine are not walkable. */
@@ -169,6 +215,17 @@ export const CAMERA = {
   near: 0.1,
   far: 400,
   dragSensitivity: 0.0055,
+} as const;
+
+export const SHADOW = {
+  /** Side of the shadow box that follows the player, in metres. */
+  boxSize: 56,
+  near: 1,
+  far: 180,
+  /** How far up the light sits along its own direction. */
+  distance: 70,
+  bias: -0.0012,
+  normalBias: 0.05,
 } as const;
 
 export const WORLD = {
@@ -256,27 +313,31 @@ export const QUALITY = {
 export const TIERS = {
   low: {
     paintScale: 0.5,
-    grassCards: 7000,
-    grassFade: 24,
+    grassCards: 16000,
+    grassFade: 28,
     particles: 40,
     skyStrokes: 5,
-    treeBlobs: 4,
+    treeBlobs: 5,
+    /** Shadow map size in pixels. 0 turns real shadows off. */
+    shadowMap: 0,
   },
   medium: {
     paintScale: 0.75,
-    grassCards: 13000,
-    grassFade: 36,
-    particles: 90,
+    grassCards: 34000,
+    grassFade: 42,
+    particles: 120,
     skyStrokes: 8,
-    treeBlobs: 6,
+    treeBlobs: 7,
+    shadowMap: 1024,
   },
   high: {
     paintScale: 1.0,
-    grassCards: 24000,
-    grassFade: 48,
-    particles: 160,
+    grassCards: 60000,
+    grassFade: 58,
+    particles: 240,
     skyStrokes: 12,
-    treeBlobs: 8,
+    treeBlobs: 9,
+    shadowMap: 2048,
   },
 } as const;
 

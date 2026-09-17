@@ -16,6 +16,15 @@ export interface Snapshot {
   springs: { id: string; left: number; revealed: boolean }[];
   birdShown: boolean;
   fps: number;
+  px: number;
+  pz: number;
+  yaw: number;
+  breathPhase: string;
+  breathsTotal: number;
+  breathsCalm: number;
+  stride: number;
+  speed: number;
+  mist: number;
   butterflyShown: boolean;
 }
 
@@ -82,6 +91,14 @@ export async function startChapter(page: Page, query: string): Promise<void> {
   });
   await page.goto(query);
   await page.waitForFunction(() => document.body.dataset.ready === '1');
+}
+
+/**
+ * Clicks a chapter on the start screen. The button is found by its data
+ * attribute, so a change to the chapter's name does not break every test.
+ */
+export async function beginChapter(page: Page, id = 1): Promise<void> {
+  await page.locator(`button[data-chapter="${String(id)}"]`).click();
 }
 
 export async function answerQuestions(page: Page, value = 3): Promise<void> {

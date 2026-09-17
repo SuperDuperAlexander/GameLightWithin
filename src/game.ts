@@ -15,7 +15,7 @@ import {
 import type { QualitySettings, QualityTier } from './core/quality';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
-import { borderAmount } from './world/terrain';
+import { border } from './world/place';
 
 /** The fixed simulation step, in seconds. */
 const FIXED_STEP = 1 / 60;
@@ -70,6 +70,8 @@ export class Game {
    */
   autoWalk: { x: number; z: number } | null = null;
   readonly wind = { x: 0, z: 0, strength: 0, radius: 1 };
+  /** 0 to 1, how much of their walking speed the player currently has. */
+  strideFactor = 1;
 
   constructor(
     readonly root: HTMLElement,
@@ -88,6 +90,9 @@ export class Game {
     this.renderer.setPixelRatio(pixelRatioCap());
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.setClearColor(0xcfd2d6, 1);
+    // Soft shadow edges. The map itself is sized by the quality tier.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   async start(): Promise<void> {
@@ -97,7 +102,7 @@ export class Game {
     this.autoQuality = this.flags.quality === null && settings.quality === 'auto';
     this.quality = settingsFor(tier);
 
-    this.world = new World(this.quality);
+    this.world = new World(this.quality, this.renderer);
     this.camera = new FollowCamera(window.innerWidth / Math.max(1, window.innerHeight));
     this.camera.reducedMotion = settings.reducedMotion;
     this.world.color.reducedMotion = settings.reducedMotion;
@@ -200,6 +205,7 @@ export class Game {
     // The chapter runs every step, even while a panel is open, so the world
     // keeps drawing behind it. The chapter itself decides what may advance.
     this.onFrame?.(dt, this.time);
+    this.world.playerSpeed = this.speed;
     this.world.update(
       dt,
       this.calm,
@@ -243,7 +249,7 @@ export class Game {
     }
 
     // The border mist turns the player back gently. There are no invisible walls.
-    this.borderPush = borderAmount(p.x, p.z);
+    this.borderPush = border(p.x, p.z);
     if (this.borderPush > 0.01) {
       const inwardX = -Math.sign(p.x - 0) * 0.35;
       const inwardZ = p.z > WORLD.lengthStart ? -1 : p.z < WORLD.lengthEnd ? 1 : 0;
@@ -251,7 +257,7 @@ export class Game {
       mz += inwardZ * this.borderPush * 1.6;
     }
 
-    const step = PLAYER.walkSpeed * dt;
+    const step = PLAYER.walkSpeed * this.strideFactor * dt;
     const moved = this.world.ground.resolveMove(p.x, p.z, mx * step, mz * step);
     const dx = moved.x - p.x;
     const dz = moved.z - p.z;

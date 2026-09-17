@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { LIGHT, PLAYER } from '../content/chapter1';
+import { BODY, BODY_POINTS } from '../content/chapter2';
+import type { BodyPoint } from '../content/chapter2';
 import { PALETTE } from '../content/palette';
 import { clamp01 } from '../core/math';
-import { applyColorRestore } from '../render/colorRestore';
+import { worldMaterial } from '../render/materials';
 
 /**
  * The player: a simple, soft, faceless figure. A rounded body, a small head and
@@ -16,35 +18,39 @@ export class PlayerFigure {
   private readonly moteMeshes: THREE.Mesh[] = [];
   private moteTime = 0;
   private glowAmount = 0;
+  /** Advances with distance walked, so the step never changes with frame rate. */
+  private walkPhase = 0;
+  /** 0 standing, 1 walking at full stride. */
+  private gait = 0;
+  private readonly body = new THREE.Group();
+  private readonly hem: THREE.Mesh;
 
   constructor() {
     this.group.name = 'player';
 
-    const body = applyColorRestore(
-      new THREE.MeshLambertMaterial({ color: 0xe6e2dc, flatShading: false }),
-    );
-    const cloak = applyColorRestore(
-      new THREE.MeshLambertMaterial({ color: 0xcfd6dd, flatShading: false }),
-    );
+    // The player carries the strongest rim in the world, so the figure always
+    // reads clearly against the meadow behind them.
+    const body = worldMaterial({ color: 0xe6e2dc, rim: 0.45 });
+    const cloak = worldMaterial({ color: 0xcfd6dd, rim: 0.45 });
 
     // Rounded body, wider at the hem so it reads as a cloak.
     const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.52, 1.1, 12, 1), cloak);
     torso.position.y = 0.58;
-    this.group.add(torso);
+    this.body.add(torso);
 
     const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), cloak);
     shoulders.position.y = 1.12;
     shoulders.scale.set(1, 0.72, 0.9);
-    this.group.add(shoulders);
+    this.body.add(shoulders);
 
     // A small, faceless head.
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 12), body);
     head.position.y = 1.47;
-    this.group.add(head);
+    this.body.add(head);
 
-    const hem = new THREE.Mesh(new THREE.ConeGeometry(0.56, 0.42, 12, 1, true), cloak);
-    hem.position.y = 0.21;
-    this.group.add(hem);
+    this.hem = new THREE.Mesh(new THREE.ConeGeometry(0.56, 0.42, 12, 1, true), cloak);
+    this.hem.position.y = 0.21;
+    this.body.add(this.hem);
 
     // The soft glow that shows calm. It is additive so it never darkens anything.
     this.glow = new THREE.Mesh(
@@ -83,6 +89,9 @@ export class PlayerFigure {
         `,
       }),
     );
+    this.group.add(this.body);
+    for (const part of this.body.children) part.castShadow = true;
+
     this.glow.position.y = 0.9;
     this.glow.renderOrder = 2;
     this.group.add(this.glow);
@@ -125,6 +134,11 @@ export class PlayerFigure {
     this.group.position.set(x, y, z);
   }
 
+  /** The blob shadow is only used when the tier has no real shadows. */
+  setBlobShadow(on: boolean): void {
+    this.shadow.visible = on;
+  }
+
   setFacing(angle: number): void {
     this.group.rotation.y = angle;
   }
@@ -140,6 +154,49 @@ export class PlayerFigure {
     if (u) u.value = 0.22 + this.glowAmount * 1.5;
   }
 
+  /**
+   * The four body points: feet, belly, heart, head.
+   *
+   * They are built once and left dark. Chapter 2 lights them one at a time as
+   * the player breathes at each stone, and a point that is lit stays lit. No
+   * other chapter touches them, so they cost one hidden group at the start.
+   */
+  private bodyGlows: Map<BodyPoint, THREE.Mesh> | null = null;
+
+  /** Lights one body point, or dims it. `amount` is 0 to 1. */
+  setBodyPoint(point: BodyPoint, amount: number): void {
+    if (!this.bodyGlows) this.buildBodyGlows();
+    const mesh = this.bodyGlows?.get(point);
+    if (!mesh) return;
+    const a = clamp01(amount);
+    mesh.visible = a > 0.01;
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = a * 0.85;
+    mesh.scale.setScalar(0.1 + a * 0.075);
+  }
+
+  private buildBodyGlows(): void {
+    this.bodyGlows = new Map();
+    const geo = new THREE.SphereGeometry(1, 10, 8);
+    for (const point of BODY_POINTS) {
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(PALETTE.receiveGold),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          fog: false,
+        }),
+      );
+      mesh.position.set(0, BODY.heights[point], 0.16);
+      mesh.visible = false;
+      mesh.name = `bodyGlow-${point}`;
+      this.group.add(mesh);
+      this.bodyGlows.set(point, mesh);
+    }
+  }
+
   setLight(count: number): void {
     for (let i = 0; i < this.moteMeshes.length; i++) {
       const mote = this.moteMeshes[i];
@@ -147,7 +204,11 @@ export class PlayerFigure {
     }
   }
 
-  update(dt: number, groundY: number): void {
+  /**
+   * @param speed the player's ground speed in metres per second
+   */
+  update(dt: number, groundY: number, speed = 0): void {
+    this.animateWalk(dt, speed);
     this.moteTime += dt;
     const visible = this.moteMeshes.filter((m) => m.visible).length;
     for (let i = 0; i < visible; i++) {
@@ -163,6 +224,56 @@ export class PlayerFigure {
       mote.scale.setScalar(0.85 + Math.sin(this.moteTime * 2.4 + i) * 0.16);
     }
     this.shadow.position.y = groundY - this.group.position.y + 0.04;
+  }
+
+  /**
+   * A walk, made from the movement itself rather than from a clip.
+   *
+   * The body rises and falls twice per stride, rolls a little from side to
+   * side, and leans into the direction of travel. Without it the figure slides
+   * over the ground like a chess piece, which undoes everything the rest of
+   * the scene is doing.
+   */
+  private animateWalk(dt: number, speed: number): void {
+    // The phase follows distance, not time, so the step matches the speed.
+    this.walkPhase += speed * dt * 2.6;
+    const want = clamp01(speed / 3);
+    this.gait += (want - this.gait) * Math.min(1, dt * 8);
+
+    const bob = Math.sin(this.walkPhase * 2) * 0.055 * this.gait;
+    const roll = Math.sin(this.walkPhase) * 0.07 * this.gait;
+    const lean = 0.1 * this.gait;
+
+    // Lying down overrides the walk: the figure tips back and settles.
+    if (this.lying > 0.001) {
+      const eased = this.lying * this.lying * (3 - 2 * this.lying);
+      this.body.position.y = -0.55 * eased;
+      this.body.rotation.z = 0;
+      this.body.rotation.x = -1.35 * eased;
+      this.hem.rotation.z = 0;
+      this.hem.position.x = 0;
+      return;
+    }
+
+    this.body.position.y = bob;
+    this.body.rotation.z = roll;
+    this.body.rotation.x = lean;
+    // The hem swings a beat behind the body, so the cloak has some weight.
+    this.hem.rotation.z = -roll * 0.6;
+    this.hem.position.x = Math.sin(this.walkPhase - 0.6) * 0.03 * this.gait;
+  }
+
+  /** 0 standing, 1 lying down. Chapter 2 uses it before the dream. */
+  private lying = 0;
+
+  /**
+   * Lies the player down, or stands them back up.
+   *
+   * `amount` is the whole state, not a step, so a chapter can ease it or set
+   * it straight and the result is the same.
+   */
+  setLyingDown(amount: number): void {
+    this.lying = clamp01(amount);
   }
 
   /** Where a light mote should fly to. */

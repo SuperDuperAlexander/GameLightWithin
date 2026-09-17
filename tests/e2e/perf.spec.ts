@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import { beginChapter } from './helpers';
 
 /**
  * Measures the real frame rate for each quality tier. It runs under software
@@ -17,7 +18,7 @@ for (const c of CASES) {
     test.setTimeout(180_000);
     await page.goto(c.url);
     await page.waitForFunction(() => document.body.dataset.ready === '1');
-    await page.getByRole('button', { name: 'Begin' }).click();
+    await beginChapter(page);
     for (const g of ['receive', 'calm']) {
       await page.locator(`[aria-label="${g}"] button[data-value="3"]`).click();
     }

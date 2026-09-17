@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { PALETTE } from '../content/palette';
-import { makeRng } from '../core/math';
-import { applyColorRestore } from '../render/colorRestore';
+import { clamp01, makeRng } from '../core/math';
+import { worldMaterial } from '../render/materials';
+import { buildTree } from './props';
 
 const GOLD = new THREE.Color(PALETTE.receiveGold);
 
@@ -245,6 +246,98 @@ export class FogVolume {
   }
 }
 
+/**
+ * The mist the player wakes inside.
+ *
+ * The player is never stopped from walking. Instead they set off inside their
+ * own weather: the valley is close and dim, their stride is short, and the
+ * longer they push on without stopping the thicker it gets. One finished
+ * breath clears it for good. The penalty is something you can see, which is
+ * the only kind worth having in a game with no score and no failure.
+ */
+export class WakingMist {
+  readonly group = new THREE.Group();
+  private readonly material: THREE.ShaderMaterial;
+  private readonly puffs: { mesh: THREE.Mesh; base: THREE.Vector3; phase: number }[] = [];
+  private time = 0;
+
+  constructor() {
+    this.material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: new THREE.Color(PALETTE.skyGrey) },
+        uStrength: { value: 1 },
+        uTime: { value: 0 },
+      },
+      vertexShader: `
+        precision highp float;
+        varying vec3 vN; varying vec3 vV; varying vec3 vL;
+        void main() {
+          vec4 w = modelMatrix * vec4(position, 1.0);
+          vN = normalize(mat3(modelMatrix) * normal);
+          vV = normalize(cameraPosition - w.xyz);
+          vL = position;
+          gl_Position = projectionMatrix * viewMatrix * w;
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        varying vec3 vN; varying vec3 vV; varying vec3 vL;
+        uniform vec3 uColor; uniform float uStrength; uniform float uTime;
+        void main() {
+          // Soft everywhere and softest at the silhouette, so a bank of these
+          // reads as mist instead of a row of bubbles.
+          float facing = abs(dot(normalize(vN), normalize(vV)));
+          float soft = pow(facing, 0.7);
+          float roll = 0.84 + 0.16 * sin(uTime * 0.5 + vL.y * 1.7 + vL.x);
+          gl_FragColor = vec4(uColor, clamp(soft * roll * uStrength * 0.3, 0.0, 0.5));
+        }
+      `,
+    });
+
+    // A ring of low puffs around the player, thickest at knee height, so the
+    // sky stays open and the world ahead just goes soft.
+    const geo = new THREE.SphereGeometry(1, 12, 9);
+    const rng = makeRng(31337);
+    for (let i = 0; i < 12; i++) {
+      const mesh = new THREE.Mesh(geo, this.material);
+      const a = (i / 12) * Math.PI * 2 + rng() * 0.5;
+      const r = 0.45 + rng() * 0.4;
+      const base = new THREE.Vector3(Math.cos(a) * r, 0.1 + rng() * 0.28, Math.sin(a) * r);
+      mesh.position.copy(base);
+      const size = 0.34 + rng() * 0.26;
+      mesh.scale.set(size, size * 0.6, size);
+      this.puffs.push({ mesh, base, phase: rng() * Math.PI * 2 });
+      this.group.add(mesh);
+    }
+    this.group.name = 'wakingMist';
+  }
+
+  /** @param value 0 clear, 1 thickest. */
+  setStrength(value: number, radius: number): void {
+    const strength = clamp01(value);
+    this.group.visible = strength > 0.01;
+    this.group.scale.setScalar(radius);
+    const u = this.material.uniforms.uStrength;
+    if (u) u.value = strength;
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    const u = this.material.uniforms.uTime;
+    if (u) u.value = this.time;
+    for (const p of this.puffs) {
+      p.mesh.position.set(
+        p.base.x + Math.sin(this.time * 0.2 + p.phase) * 0.07,
+        p.base.y + Math.sin(this.time * 0.29 + p.phase * 1.4) * 0.03,
+        p.base.z + Math.cos(this.time * 0.17 + p.phase) * 0.07,
+      );
+    }
+  }
+}
+
 /** The seed: a small glowing sprout that grows into the bridge. */
 export class Sprout {
   readonly group = new THREE.Group();
@@ -255,7 +348,7 @@ export class Sprout {
   constructor() {
     this.stem = new THREE.Mesh(
       new THREE.ConeGeometry(0.2, 1.05, 6),
-      applyColorRestore(new THREE.MeshLambertMaterial({ color: PALETTE.growthGreen })),
+      worldMaterial({ color: PALETTE.growthGreen, rim: 0.3 }),
     );
     this.stem.position.y = 0.52;
     this.glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), makeMoteMaterial(GOLD));
@@ -284,9 +377,7 @@ export class Sprout {
 /** The bird hint in scene 3. It lands near the hidden spring and sits still. */
 export function buildBird(): THREE.Group {
   const group = new THREE.Group();
-  const mat = applyColorRestore(
-    new THREE.MeshLambertMaterial({ color: 0xbfb3a4, flatShading: true }),
-  );
+  const mat = worldMaterial({ color: 0xbfb3a4, rim: 0.3 });
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat);
   body.scale.set(1, 0.9, 1.35);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), mat);
@@ -351,5 +442,80 @@ export class Butterfly {
     this.group.position.lerpVectors(a, b, this.travel - i);
     this.group.position.y += Math.sin(this.time * 1.6) * 0.22;
     this.group.lookAt(b.x, this.group.position.y, b.z);
+  }
+}
+
+/**
+ * The tree a seed grows into.
+ *
+ * A heart tree rises over a couple of seconds and stays; the thanks given
+ * under it turns it golden. A mind tree rises faster, stands brighter, and
+ * then goes, which is the only place in the chapter where the two kinds of
+ * seed are told apart — and it is told by what the player sees, not by text.
+ */
+export class GrownTree {
+  readonly group = new THREE.Group();
+  private readonly tree: THREE.Group;
+  private readonly glow: THREE.Mesh;
+  /** The tree's own colours, kept so the golden blend stays reversible. */
+  private readonly colors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
+  private rise = 0;
+  private fade = 1;
+  private golden = -1;
+  private time = 0;
+  private kind: 'heart' | 'mind' = 'heart';
+
+  constructor(seed: number, blobCount: number) {
+    this.tree = buildTree(seed, blobCount);
+    this.tree.scale.setScalar(0.001);
+    this.glow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 14, 12), makeMoteMaterial(GOLD));
+    this.glow.position.y = 3.4;
+    this.glow.visible = false;
+    this.group.add(this.tree, this.glow);
+    this.group.visible = false;
+    this.group.name = 'grownTree';
+
+    this.tree.traverse((o) => {
+      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (material?.color && !this.colors.some((c) => c.material === material)) {
+        this.colors.push({ material, base: material.color.clone() });
+      }
+    });
+  }
+
+  /**
+   * @param standing whether a tree stands here at all
+   * @param kind which kind of seed grew it
+   * @param fade 1 fully there, 0 gone. Only a mind tree ever leaves.
+   */
+  setState(standing: boolean, kind: 'heart' | 'mind', fade: number): void {
+    this.group.visible = standing;
+    this.kind = kind;
+    this.fade = Math.max(0, Math.min(1, fade));
+    if (!standing) this.rise = 0;
+    // A mind tree stands brighter than a heart tree, and only while it lasts.
+    this.glow.visible = standing && kind === 'mind';
+  }
+
+  /** Blends the tree toward gold, for the thanks at the end of the chapter. */
+  setGold(t: number): void {
+    const amount = Math.max(0, Math.min(1, t));
+    if (amount === this.golden) return;
+    this.golden = amount;
+    for (const entry of this.colors) {
+      entry.material.color.copy(entry.base).lerp(GOLD, amount * 0.75);
+    }
+  }
+
+  update(dt: number): void {
+    if (!this.group.visible) return;
+    this.time += dt;
+    // A mind tree comes up fast, a heart tree takes its time.
+    const speed = this.kind === 'mind' ? 1.6 : 0.5;
+    this.rise = Math.min(1, this.rise + dt * speed);
+    const eased = this.rise * this.rise * (3 - 2 * this.rise);
+    this.tree.scale.setScalar(Math.max(0.001, eased * this.fade));
+    const mat = this.glow.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.5 * this.fade * (0.8 + Math.sin(this.time * 1.4) * 0.2);
   }
 }

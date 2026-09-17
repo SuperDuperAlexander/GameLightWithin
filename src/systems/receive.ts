@@ -22,6 +22,8 @@ export class Spring {
   revealed: boolean;
   /** Calm breaths taken inside the reveal radius so far. */
   breathsNear = 0;
+  /** How much light the last calm breath drew, so the motes can match it. */
+  lastGiven = 0;
   /** True once the spring has given all its light. */
   get empty(): boolean {
     return this.remaining <= 0;
@@ -72,9 +74,14 @@ export class ReceiveSystem {
       }
 
       if (spring.revealed && !spring.empty && d <= RECEIVE.drawRadius && gave === null) {
-        spring.remaining--;
+        // One calm breath draws what the spring still holds, up to its share.
+        // Standing still for a whole breath is the moment that matters;
+        // repeating it is only waiting.
+        const amount = Math.min(spring.remaining, RECEIVE.lightPerBreath);
+        spring.remaining -= amount;
+        spring.lastGiven = amount;
         gave = spring;
-        this.bus.emit('lightCollected', { from: 'spring', amount: 1 });
+        this.bus.emit('lightCollected', { from: 'spring', amount });
         this.bus.emit('cue', { id: 'mote' });
         if (spring.empty) {
           this.bus.emit('springEmptied', { id: spring.config.id });

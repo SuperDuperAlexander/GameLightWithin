@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { LAYOUT, WORLD } from '../content/chapter1';
+import { LAYOUT } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { makeRng } from '../core/math';
 import { colorUniforms } from '../render/colorRestore';
-import { inGap, pathCenterX, terrainHeight, valleyHalfWidth } from './terrain';
+import { place } from './place';
 
 /**
  * Grass and flowers as camera-facing cards with a brush-stroke alpha made in
@@ -23,20 +23,29 @@ export function buildGrass(count: number): THREE.Mesh {
   const params = new Float32Array(count * 4);
   let placed = 0;
 
+  const here = place();
   for (let i = 0; i < count * 6 && placed < count; i++) {
-    const z = WORLD.lengthEnd + rng() * (WORLD.lengthStart - WORLD.lengthEnd);
-    const half = valleyHalfWidth(z);
-    const x = pathCenterX(z) + (rng() * 2 - 1) * half * 1.15;
-    if (Math.abs(x) > WORLD.halfWidth - 2) continue;
-    if (inGap(x, z)) continue;
-    const y = terrainHeight(x, z);
+    const z = here.zEnd + rng() * (here.zStart - here.zEnd);
+    const half = here.halfWidth(z);
+    // Two samples added together bunch the cards toward the middle of the
+    // floor, where the player walks. A wide place then reads as a meadow at
+    // the player's feet instead of as a lawn seen from far away.
+    const across = (rng() + rng() - 1) * 1.15;
+    const x = here.centerX(z) + across * half;
+    if (Math.abs(x) > here.halfWidthMax - 2) continue;
+    if (here.isHole(x, z)) continue;
+    // The walked track is bare earth, so no grass grows on it.
+    if (here.pathAmount(x, z) > 0.35) continue;
+    const y = here.height(x, z);
     offsets[placed * 3] = x;
     offsets[placed * 3 + 1] = y;
     offsets[placed * 3 + 2] = z;
     // width, height, kind (0 grass, 1 flower), phase
     const flower = rng() < 0.13 ? 1 : 0;
-    params[placed * 4] = flower ? 0.13 + rng() * 0.08 : 0.09 + rng() * 0.09;
-    params[placed * 4 + 1] = flower ? 0.3 + rng() * 0.2 : 0.34 + rng() * 0.46;
+    params[placed * 4] = flower ? 0.13 + rng() * 0.08 : 0.08 + rng() * 0.1;
+    // A wide spread of heights reads as a real meadow rather than a mown lawn.
+    const tall = rng() < 0.22 ? 1.7 : 1;
+    params[placed * 4 + 1] = flower ? 0.32 + rng() * 0.22 : (0.34 + rng() * 0.5) * tall;
     params[placed * 4 + 2] = flower;
     params[placed * 4 + 3] = rng() * Math.PI * 2;
     placed++;
@@ -59,6 +68,8 @@ export function buildGrass(count: number): THREE.Mesh {
       uGlobalColor: colorUniforms.uGlobalColor,
       uGreyTint: colorUniforms.uGreyTint,
       uGreyDim: colorUniforms.uGreyDim,
+      uNight: colorUniforms.uNight,
+      uNightTint: colorUniforms.uNightTint,
       uGreen: { value: new THREE.Color(PALETTE.growthGreen) },
       uDeep: { value: new THREE.Color(PALETTE.deepGreen) },
       uRose: { value: new THREE.Color(PALETTE.heartRose) },
@@ -103,7 +114,12 @@ export function buildGrass(count: number): THREE.Mesh {
         float lean = sin(vPhase * 3.7) * 0.5;
         float bend = uv.y * uv.y;
         local.x += lean * bend * aParams.y;
-        float sway = sin(uTime * 1.35 + vPhase + aOffset.x * 0.35) * 0.12;
+        // Wind waves travel across the field, so whole bands of grass lean
+        // together and the meadow reads as moving rather than twitching.
+        float wave = sin(aOffset.x * 0.13 + aOffset.z * 0.08 - uTime * 1.05);
+        float wave2 = sin(aOffset.x * 0.29 - aOffset.z * 0.2 - uTime * 0.62);
+        float gust = wave * 0.62 + wave2 * 0.38;
+        float sway = sin(uTime * 1.35 + vPhase + aOffset.x * 0.35) * 0.09 + gust * 0.2;
         // A soft wind pushes out from the fog while the player feels it.
         vec2 away = aOffset.xz - uWind.xy;
         float d = length(away);
@@ -128,6 +144,8 @@ export function buildGrass(count: number): THREE.Mesh {
       uniform float uGlobalColor;
       uniform vec3 uGreyTint;
       uniform float uGreyDim;
+      uniform float uNight;
+      uniform vec3 uNightTint;
       uniform vec3 uGreen;
       uniform vec3 uDeep;
       uniform vec3 uRose;
@@ -177,7 +195,13 @@ export function buildGrass(count: number): THREE.Mesh {
         vec3 greyed = mix(vec3(lum), uGreyTint * (0.6 + lum * 0.8), 0.4);
         float greyLum = dot(greyed, vec3(0.299, 0.587, 0.114));
         greyed *= min(1.0, (lum * uGreyDim) / max(greyLum, 1e-4));
-        gl_FragColor = vec4(mix(greyed, col, amount), 1.0);
+        vec3 outCol = mix(greyed, col, amount);
+        // The same moonlight the world materials get, so the grass does not
+        // stay a field of bright scratches after dark.
+        if (uNight > 0.001) {
+          outCol = mix(outCol, mix(outCol, uNightTint * 2.2, 0.38) * 0.8, uNight);
+        }
+        gl_FragColor = vec4(outCol, 1.0);
       }
     `,
   });

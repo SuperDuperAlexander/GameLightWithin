@@ -152,8 +152,12 @@ All in `screenshots/`, one set per scene, desktop 1280 x 720 and mobile
 | Reflect reply       | `after1-reflect-reply-desktop.png` | `after1-reflect-reply-mobile.png` |
 | Understand          | `after2-understand-desktop.png`    | `after2-understand-mobile.png`    |
 | Apply               | `after3-apply-desktop.png`         | `after3-apply-mobile.png`         |
-| End questions       | `after4-end-questions-desktop.png` | `after4-end-questions-mobile.png` |
-| Chapter end         | `after5-chapter-end-desktop.png`   | `after5-chapter-end-mobile.png`   |
+| Chapter end         | `after4-chapter-end-desktop.png`   | `after4-chapter-end-mobile.png`   |
+
+*Updated for chapter 2:* the closing questions moved to the end of the last
+chapter in the build, so chapter 1 goes from Apply straight to its end screen,
+and that screen now offers the walk on into chapter 2. The old
+`after4-end-questions` and `after5-chapter-end` files are gone.
 
 The full play-through writes its own set as well, so there is a picture of every
 scene taken during a real, uninterrupted play: `scene0-start`, `scene0-questions`,
@@ -171,7 +175,7 @@ low-tier pictures described in section 5.
 
 ### Unit tests, Vitest
 
-**81 passed, 0 failed**, in 7 files.
+**86 passed, 0 failed**, in 8 files.
 
 | File                | Tests | What it covers                                                                                                                                                                                 |
 | ------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +188,7 @@ low-tier pictures described in section 5.
 
 ### Browser tests, Playwright
 
-**46 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
+**62 passed, 0 failed**, run on desktop 1280 x 720 and on a Pixel 7 profile at
 390 x 844.
 
 | Spec                    | Per project | What it covers                                                                                                                                                                                                                                       |
@@ -320,6 +324,47 @@ Device pixel ratio is capped at 1.5 on touch devices and 2 elsewhere.
 
 ---
 
+## 5b. What the first real play test found
+
+The automated run played the whole chapter and passed. A person played it and
+almost nothing worked. Both were true, and the gap between them is the most
+useful thing to come out of this project so far.
+
+1. **Every mechanic except breathing was gated behind a scene counter, and the
+   counter was gated behind the _hidden_ spring.**
+   `runScene` ran the fog only in scene 4, the seed only in scene 5 and the
+   thanks only in scene 6. The scene number moved from 3 to 4 only when the
+   second spring was emptied, and that spring is invisible until the player
+   takes two calm breaths within 6 m of it, in a wide field, with no cue for
+   the first two minutes. A player who walked past it reached a fog that did
+   nothing at all, and behind that fog no seed, no bridge and no ending.
+   The valley is one open place with one real barrier in it, the gap in the
+   ground. Nothing else should ever have been gated. Every system now runs
+   every frame, wherever the player is standing, and the scene number only
+   records how far they have come. Two browser tests cover it: one walks
+   straight past the hidden spring and dissolves the fog anyway, one plants the
+   seed while nominally still in scene 2.
+
+2. **There was no path.** The brief says "a path leads to a dry spring". The
+   valley had a walkable corridor but nothing to see, so the player stood in an
+   even grey meadow with no reason to go one way rather than another. There is
+   now a walked track down the valley, with a branch to the dry spring and the
+   side path out to the third spring. It is painted into the terrain's vertex
+   colours and keeps the grass off itself, so it costs no geometry. There is
+   deliberately no track to the hidden spring; that one is still found by
+   stopping.
+
+3. **A and D were swapped.** The camera's right vector was the negative of
+   `forward` crossed with up, so pressing right walked left. The browser tests
+   never caught it because they steered the player with a world-space helper
+   that skips the camera-relative step entirely. There is now a spec that
+   presses the real keys, and a unit test on the camera basis; both fail on the
+   old code.
+
+4. **The touch controls showed on a laptop.** The joystick and the big breath
+   button appeared on any device reporting touch points, which includes a
+   laptop with a touchscreen. They now wait for a finger to actually be used.
+
 ## 6. Known problems, worst first
 
 1. **The frame rate targets are still unverified.** 60 fps on a mid-range laptop
@@ -406,6 +451,433 @@ Device pixel ratio is capped at 1.5 on touch devices and 2 elsewhere.
    a debug way to try a mind seed now, so you can feel whether the
    two-times-faster-then-fades behaviour reads the way you meant it?
 
+   *Answered by chapter 2.* The mind seed is switched on there, and `?calm=0.2`
+   forces one. See the chapter 2 report below.
+
+---
+---
+
+# Light Within — chapter 2 "Be aware"
+
+Completion report for the second chapter. Everything here was measured on this
+machine. Chapter 1 still works; its tests were run again and pass.
+
+---
+
+## C2.1 What was built, per milestone
+
+### C2-M0 Chapter system
+
+The game now holds more than one chapter.
+
+- A registry in `src/content/chapters.ts`. Each chapter is one entry: how many
+  scenes it has, how much light it starts with, how strongly the breath circle
+  is drawn, and whether it is built. Chapter 3 is already listed and locked.
+- `ChapterRunner` in `src/core/chapterRunner.ts` is the whole contract between
+  the router and a chapter: `begin`, `update`, `testApi`, `onLeaveToChapter`.
+- The save file moved to version 2. Progress is per chapter, and a version 1
+  file is migrated into chapter 1's slot, so nobody part way through chapter 1
+  loses their walk.
+- The start screen lists the chapters and locks the ones not reached. Replaying
+  chapter 1 resets only chapter 1.
+- The chapter 1 end screen button is now "Walk on", into chapter 2.
+- The closing questions follow `LAST_AVAILABLE_CHAPTER`, so they are asked once,
+  after the last chapter in the build, not after every chapter.
+- The breath circle's strength is now a chapter's choice. Chapter 1 draws it
+  fully, chapter 2 at 0.6, because chapter 2 helps less.
+
+### C2-M1 World
+
+The valley of chapter 1 and the meadows of chapter 2 are now two **places**
+behind one interface, `src/world/place.ts`. A place owns its height, its
+borders, its path, its terrain build and its props. Grass, props, the ground
+checks and the border push all read the active place, so the second chapter is
+a second place and not a second copy of the world code.
+
+The meadows are wide where the valley was narrow: the floor is 30 m half-width
+almost everywhere, the hills are low, and the horizon is closed by two bands of
+distant violet mountains rather than by valley sides. The ground climbs about
+11 m from the first scene to the last, so every scene looks back down over the
+one before it. The path winds the whole length and branches once, up the slope
+of the four body stones.
+
+The sky gained a slow day and a night. `uDay` sinks the sun and warms the
+horizon over one play of the chapter; `uNight` turns the dome to the night blue
+with stars and a moon. Night is not darkness: the sun dims but the sky light in
+the environment map is turned **up**, and every world material and the grass
+cool toward the night blue while keeping the colour they have won. That is what
+makes a moonlit meadow read as moonlit instead of as a dark photograph of a day.
+
+Chapter 2 starts at 0.55 global colour. A player who has learned to receive does
+not arrive somewhere grey again.
+
+### C2-M2 Body stones and body glow
+
+Four rounded standing stones up a slope, each with a symbol cut into its face
+and drawn in code: two footprints, a circle, a downward point, a ringed circle.
+Only the next stone in the order glows. Three calm breaths at a stone light the
+matching point on the player's body and give one light. After the fourth, the
+four lit points show together for three seconds, with no text.
+
+The four points live on the player figure itself (`setBodyPoint`), so they stay
+lit for the rest of the chapter and travel with the player.
+
+### C2-M3 Feeling weather and naming
+
+`FeelingWeather` in `src/systems/weather.ts` is the reusable entity the brief
+asked for: type, intensity, size, and whether it follows. It knows nothing about
+how it is drawn. `WeatherView` draws it, and the three are told apart by shape
+and movement as well as colour:
+
+- **sadness** sits low and heavy and rains straight down,
+- **anger** is a taller bank that gusts and pulses slowly in colour,
+- **worry** is many small wisps circling fast.
+
+A weather that follows chases at 90 percent of a walk, so the player can put
+distance between them slowly, which is what running from a feeling feels like.
+
+The naming panel opens after three seconds standing still nearby with at least
+one calm breath done. The three answers are shuffled every time. A name that
+fits takes 40 percent off. A name that does not is never called wrong: the reply
+is "Look again.", the panel closes for four seconds, and the weather shows its
+signature a little more strongly. Every attempt is recorded.
+
+Scene 3 is a sadness cloud that follows the player: stop, name, two calm breaths
+under the rain, and it lets go into a rainbow, two light and a colour zone.
+
+### C2-M4 Sound breath and the storm
+
+A tall stone hums when the player stands by it. The first calm out-breath at
+full length beside it plays together with the stone, and the sound breath is the
+player's from then on. There is no text; the stone's hum and the player's own
+note carry it.
+
+From then on every calm, full-length out-breath makes a tone. The tones climb a
+pentatonic scale, so however many the player makes, the row is pleasant. Each
+tone sends a ring of light out from the player and takes 20 percent off nearby
+anger and worry. **Sadness is not changed by a tone** — it is not a thing to be
+quietened, only felt through — and there is a unit test that holds that.
+
+The storm on the ridge does not follow. Its five steps cannot be skipped: see
+it, name it, feel it, quieten it with five tones, then stand in the middle and
+breathe three times. Running away makes it grow, and pushing costs one more
+breath, with the same caps as the chapter 1 fog.
+
+### C2-M5 Two seeds, the mind seed and the light well
+
+Two seed spots. Spot A sits where the storm stood, and the leftover wind takes
+calm twice as fast there; spot B is a quiet hollow. The heart and mind branch
+that chapter 1 carried in code is switched on here: calm at or above 0.6 plants
+a heart seed, below it a mind seed.
+
+A mind tree grows in half the away time, stands for sixty seconds, then fades
+and gives two light back. A heart tree stays. No text judges either one.
+
+The light well between the two spots gives one light per calm breath, without
+limit, but only while the player has fewer than five. It is a floor, not a tap:
+a player who spends everything on a tree that fades can always try again.
+
+### C2-M6 Night, the dream and the ending
+
+Night falls once a heart tree stands. Three calm breaths of thanks under it turn
+the meadows to full colour, moonlit.
+
+The player lies down in the grass, and the dream fades in over the top of them
+settling. The dream is a flat silhouette overlay: a village on a hill under
+stars, one lit window per house, and one bird that crosses the same roof twice. There is no
+text. It is drawn as an SVG overlay rather than in the world on purpose — a
+dream should not look like the place the player is standing in, and building a
+second village in three dimensions to show for thirteen seconds would cost more
+than the whole chapter.
+
+Then the learning cycle: "Which weather did you meet most today?" with the same
+reply for every answer including "None", the Understand card naming
+Dr. Rulin Xiu, the Apply card, and the end screen.
+
+### C2-M7 Polish
+
+Sound: the sound breath tones and the singing stone's hum, and three
+continuous layers the player stands inside rather than hears as events — the
+weather they are in (soft rain low down, the storm's wind lower still, the
+worry whisper high), and at night a low pad with crickets over it. Thunder
+rolls every seven to sixteen seconds while the storm still stands and the
+player is close enough for it to be about them; it is a rumble that swells
+over most of a second and never a crack, because a sharp sound would make the
+storm a threat and the storm is a feeling. A "Soft storm sounds" setting drops
+the thunder and the storm's wind to about a third.
+
+Accessibility: the anger pulse is a colour pulse at 1.6 rad/s and the worry
+shimmer at 8 rad/s in the shader — both well under three flashes a second, and
+neither changes brightness. Reduced motion slows all weather movement and stops
+the shader clock, so the pulses become steady colour. The naming panel is three
+ordinary buttons, so it works from the keyboard like every other panel. The
+breath label became a frosted pill instead of a glowing outline, because dark
+text with a pale halo disappears against a night meadow.
+
+---
+
+## C2.2 Screenshots
+
+All written by `npm run e2e` into `screenshots/`. Each is taken twice: desktop
+(1280 × 720) and mobile (Pixel 7, 390 × 844). The file names end in `-desktop`
+or `-mobile`.
+
+| Scene | File |
+| --- | --- |
+| 1 Over the bridge, the meadows | `c2-scene1-meadows-*.png` |
+| 2 The four body stones | `c2-scene2-body-stones-*.png` |
+| 3 The rain cloud, with the naming panel | `c2-scene3-rain-*.png` |
+| 3 The rainbow, when the rain lets go | `c2-scene3-rainbow-*.png` |
+| 4a The singing stone | `c2-scene4a-singing-stone-*.png` |
+| 4 The storm ridge | `c2-scene4-storm-*.png` |
+| 5 Two seeds | `c2-scene5-seeds-*.png` |
+| 6 Night | `c2-scene6-night-*.png` |
+| The dream | `c2-dream-*.png` |
+| The end screen | `c2-end-*.png` |
+
+---
+## C2.3 Test results
+
+### Unit tests, Vitest
+
+166 tests in 14 files, all passing. 68 of them are new for chapter 2.
+
+| File | Tests | What it holds |
+| --- | --- | --- |
+| `weather.test.ts` | 17 | Follow rule, naming, intensity caps, the tone rule per feeling |
+| `seeds2.test.ts` | 15 | Heart and mind seeds, growth, fade, return, the light well |
+| `storm.test.ts` | 11 | The five steps, the order, five tones, running and pushing |
+| `soundBreath.test.ts` | 9 | Unlock, calm and length, the pentatonic row, the near miss |
+| `body.test.ts` | 9 | Four stones, the fixed order, the silhouette, the timing |
+| `router.test.ts` | 7 | Which chapter opens, and what a hand-over carries |
+| `save.test.ts` | 22 | Per-chapter save, version 1 migration, unlocking, the closing questions |
+| The chapter 1 files | 76 | Unchanged, still passing |
+
+The rules the brief asked for by name are each a test:
+
+- a correct name takes 40 percent off; a wrong one locks the panel for four
+  seconds and changes nothing else,
+- only a calm out-breath of full length makes a tone; each tone takes 20 percent
+  off anger and worry and leaves sadness alone,
+- the storm's steps cannot be skipped and five tones open it,
+- calm below 0.6 gives a mind seed, which grows in half the away time, fades
+  after sixty seconds and returns two light,
+- the light well gives only while the player has fewer than five light,
+- the save is per chapter, and the closing questions follow
+  `LAST_AVAILABLE_CHAPTER`.
+
+### Browser tests, Playwright
+
+Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
+
+| Test | Result |
+| --- | --- |
+| Chapter 2 from the meadows to the end screen | passes |
+| A low calm plants a mind seed, and the chapter still finishes | passes |
+| The light well gives light only while the player is short | passes |
+| The naming panel opens, and never says wrong | passes |
+| The start screen lists and locks the chapters | passes |
+| Finishing chapter 1 unlocks and opens chapter 2 | passes |
+| Chapter 2 starts with its own light | passes |
+| No request to any outside origin, in every chapter 2 scene | passes |
+| All chapter 1 tests | pass |
+
+**80 of 80 browser tests pass**, on desktop and on mobile, in one clean run
+that takes about an hour and a quarter on this machine.
+
+The software renderer slows from about four frames a second to well under one while
+it is busy. That made six control tests fail in a long run and pass on their
+own. They no longer read a speed off a stopwatch: a key is held until the player
+has actually moved, and the stride test measures the time to cover three metres
+rather than the distance covered in two and a half seconds. A time to cover a
+distance means the same thing at any frame rate.
+
+---
+
+## C2.4 Bundle size and frame rate
+
+### Bundle size
+
+| File | Bytes | Gzipped |
+| --- | --- | --- |
+| `index.js` | 787,858 | 209,086 |
+| `index.css` | 8,553 | — |
+| Two font files | 380,220 | — |
+| **Everything in `dist/`** | **1,218,172** | — |
+
+The budget is 6 MB for the first download and 15 MB in total. Chapter 2 added
+about 51 kB of JavaScript and no assets at all, because the meadows, the
+weather, the stones and the dream are all made in code.
+
+### Frame rate
+
+**Still unverified, and it is the first problem in the list below.** This
+machine has no GPU; it renders with SwiftShader, in software. Chapter 2
+measures 2 to 5 fps here, the same range chapter 1 measured, which tells you
+the two chapters cost about the same and nothing at all about a real device.
+
+What is known about the cost rather than measured:
+
+- The meadows draw the same grass, the same particles and the same one shadow
+  map as the valley, and the terrain has the same segment count.
+- The two extra draw calls are the mountain band (one mesh, no lighting, no
+  fog) and whichever weather is on screen: about twenty soft spheres sharing
+  one material, plus 240 rain points.
+- The one thing that really was expensive was found and fixed: night was
+  re-filtering the sky into the environment map once per frame. See C2.5.
+
+The quality tiers, the start probe and the watchdog work exactly as they do in
+chapter 1, because they belong to the game and not to a chapter.
+
+---
+
+## C2.5 What the first automatic run found
+
+Two real faults, both found by running the game rather than by reading it.
+
+**The light well made the seeds impossible.** The brief says the well sits
+between the two seed spots. I put it there: spot A at 11 m, spot B at 12 m. A
+seed only grows while the player is outside its 15 m away radius, so standing
+at the well — the one place a player short of light has to stand — stopped both
+seeds from growing. The run timed out with a mind seed stuck at "growing" and 39
+calm breaths taken. The spots are now about 20 m from the well and 40 m from
+each other, and the layout file says why in a comment so nobody closes the gap
+again.
+
+**No breath was ever long enough to sing.** The sound breath asked for an
+out-breath at least as long as the target, exactly. Nobody lets go of a key on
+the exact frame, so almost no breath qualified and the storm could never be
+quietened. It now asks for 0.95 of the target, with a test for the near miss.
+
+**The end screen named the wrong chapter.** Chapter 2 finished with a
+"Chapter 2, coming soon" button — the chapter the player had just played. The
+label was a fixed string written for chapter 1's end screen. It reads the
+registry now, and a browser test holds it.
+
+**The height function was recomputing what it already knew.** The ground
+check, the slope check and the collision slide all call it several times per
+simulation step, and the terrain build calls it about thirty thousand times.
+It eases the ground flat around each place the player has to stand still, and
+it worked out the height of each of those centres inside that loop — which is
+three noise evaluations per centre, paid on every call that lands inside one.
+That is every call the player is ever actually standing on, because the
+flattened places are exactly where the scenes are. The meadows have ten of
+them. The centres are constants; they are worked out once at load now, in both
+chapters.
+
+**The chapter could finish while the player was still walking.** The auto-walk
+helper the browser tests steer with was left running when the chapter ended, so
+the walk never reported that it had arrived. A player would not have noticed,
+because the screen is on the learning cycle by then — but the moment anything
+unpaused the world they would have set off again. Both chapters now stop the
+walk when they stop playing.
+
+**Night fall stalled the renderer.** `setNight` re-filtered the sky into the
+environment map on every call, and night falls over eight seconds, so that was
+one full PMREM pass per frame. The frame rate went to zero and night stopped at
+0.66. It now refreshes in steps of 0.12, the same way the colour drift does.
+This would have been much worse on a real device than it was here, because here
+it only cost a stalled test.
+
+---
+
+## C2.6 Where I changed the brief, and why
+
+1. **The chapter hand-over reloads the page.** The brief says "the screen fades,
+   and chapter 2 loads". It fades, and then the page reloads at `?chapter=2`.
+   A chapter owns a whole world — terrain, materials, shaders, an environment
+   map — and tearing one down in place to build another is a long tail of leaks
+   and half-disposed state. The build is about 1 MB and served locally, so the
+   reload costs less than that risk. The player sees a fade either way.
+
+2. **Chapter 2 does not start grey.** The brief does not say either way. Chapter
+   1 starts in full grey because learning to receive is what brings the colour
+   back; arriving somewhere grey again would undo that. The meadows start at
+   0.55 colour and this chapter's moments lift them the rest of the way.
+
+3. **Sadness does not answer to a sound breath.** The brief says a tone reduces
+   "nearby anger or worry", which I read as deliberate, and I built it that way
+   and wrote a test for it. Saying it plainly because it is a content decision:
+   sadness is not a thing to be quietened, only felt through.
+
+4. **The dream is a flat overlay, not a place.** The brief asks for a short
+   dream of a village where the same bird crosses the same roof twice. It is an
+   SVG silhouette over the darkened game rather than a second world. A dream
+   should not look like the place the player is standing in.
+
+5. **The naming panel needs one calm breath, not a count of them.** The brief
+   says "has completed 1 calm breath", which I took to mean at any point in the
+   chapter rather than at that weather. Requiring a breath at the weather as
+   well as three seconds of standing still would be asking twice, which the
+   accessibility rules forbid.
+
+6. **The light well is in scene 5 only in the sense of where it stands.** Like
+   every other mechanic in both chapters, it runs every frame wherever the
+   player is. A player who wanders back to it from scene 6 still gets light.
+
+---
+
+## C2.7 Known problems, worst first
+
+1. **The frame rate targets are still unverified.** This machine renders with
+   SwiftShader; there is no GPU. Measured frame rates here are 2 to 5 fps and
+   say nothing about a real device. The budget in `CLAUDE.md` — 60 fps on a
+   mid-range laptop, 30 on a mid-range Android — has not been tested on real
+   hardware for either chapter. This is the same problem chapter 1 ended with.
+
+2. **The meadows cost more than the valley.** The floor is about half again
+   the area, so the same grass budget spreads thinner. Two things were done
+   about it: the cards are bunched toward the middle of the floor where the
+   player walks, and a place can now ask for its own grass density against the
+   tier's count. The meadows ask for 1.3. That takes back most of the
+   difference and leaves chapter 2 drawing about a third more grass than
+   chapter 1 on the same tier, which is a real cost on a real device. The
+   quality watchdog can still step it down.
+
+3. **A weather can sit between the player and the camera.** The rain cloud
+   follows and settles above the player, which sooner or later puts it between
+   them and the lens. It now thins out as it passes within a few metres of the
+   camera, the way real weather does when you walk into it, rather than being
+   moved somewhere it has no business being. It has not been tuned against a
+   player turning the camera hard while standing in it.
+
+4. **The storm is visible from the first scene.** From the start of the meadows
+   you can see the dark bank on the ridge about ninety metres off. I think that
+   is right — you should see what is coming — but it is a choice, not an
+   accident, and it puts anger in view before the player has met sadness.
+
+5. **The dream is not timed to the music.** It runs for a fixed thirteen
+   seconds and the bird crosses twice inside that. The night pad and the
+   crickets carry on underneath it, which is enough to make it feel like the
+   same night, but nothing in the sound marks the dream as a dream.
+
+---
+
+## C2.8 Open questions
+
+1. **How long should the meadows take?** The brief says 12 to 18 minutes. An
+   automatic run with the easy rhythm is well under that because it never
+   stops to look at anything. I have not timed a real, human walk. Do you want
+   me to add distance between the scenes, or leave the pacing to the player?
+
+2. **Should the mind tree be planted twice?** Right now there are two spots and
+   nothing stops a player planting a mind seed at both and running out of
+   light — the light well covers it, but the lesson lands harder if the second
+   seed is the one they get right. Do you want the second spot to be easier?
+
+3. **Naming a weather that is not there.** The panel opens for whichever
+   weather the player is standing with. If both the cloud and the storm are in
+   reach, the cloud wins because the storm needs its thought shown first. Is
+   that the order you want, or should the nearer one always win?
+
+4. **The pause text.** Chapter 2's pause says "Take all the time you need. It
+   is okay to stop here." Chapter 1's still says what it said. Should chapter 1
+   get the softer wording too, now that both exist?
+
+5. **Chapter 3.** The registry has a slot for it with a lower breath-circle
+   strength already set. Do you want to write its brief next, or play these two
+   first?
+
 ---
 
 ## How to run it
@@ -413,9 +885,12 @@ Device pixel ratio is capped at 1.5 on touch devices and 2 elsewhere.
 ```
 npm install
 npm run dev          # http://localhost:5173
-npm run check        # typecheck, lint, 62 unit tests
+npm run check        # typecheck, lint and 166 unit tests
 npm run build        # typecheck and production build into dist/
 npm run e2e          # Playwright, writes screenshots/
 ```
 
 Deploy `dist/` to any static host. There is no server and no network call.
+
+Chapter 2 opens from the start screen once chapter 1 is finished, or directly
+at `?chapter=2`. A single scene: `?chapter=2&scene=4`.

@@ -18,9 +18,11 @@ export interface GameStrings {
     readonly settings: string;
     readonly back: string;
     readonly subtitle: string;
+    readonly version: string;
   };
   readonly questions: {
     readonly heading: string;
+    readonly headingEnd: string;
     readonly receive: string;
     readonly calm: string;
     readonly privacy: string;
@@ -56,6 +58,10 @@ export interface GameStrings {
   readonly hud: {
     readonly breatheIn: string;
     readonly breatheOut: string;
+    readonly breatheInShort: string;
+    readonly breatheOutShort: string;
+    readonly breatheInKeys: string;
+    readonly breatheOutKeys: string;
     readonly push: string;
     readonly pause: string;
     readonly plant: string;
@@ -79,6 +85,38 @@ export interface GameStrings {
     readonly cancel: string;
     readonly plant: string;
   };
+  readonly reflect2: {
+    readonly question: string;
+    readonly sadness: string;
+    readonly anger: string;
+    readonly worry: string;
+    readonly none: string;
+  };
+  readonly naming: {
+    readonly question: string;
+    readonly sadness: string;
+    readonly anger: string;
+    readonly worry: string;
+    readonly lookAgain: string;
+  };
+  readonly understand2: {
+    readonly card: string;
+  };
+  readonly apply2: {
+    readonly card: string;
+  };
+  readonly storm: {
+    readonly thought: string;
+  };
+  readonly pause2: {
+    readonly heading: string;
+  };
+  readonly settings2: {
+    readonly softStorm: string;
+  };
+  readonly seed2: {
+    readonly tree: string;
+  };
   readonly reflect: {
     readonly question: string;
     readonly answerCalm: string;
@@ -92,13 +130,22 @@ export interface GameStrings {
   readonly apply: {
     readonly card: string;
   };
+  readonly chapters: {
+    readonly chapter1: string;
+    readonly chapter2: string;
+    readonly chapter3: string;
+    readonly select: string;
+    readonly locked: string;
+  };
   readonly end: {
     readonly heading: string;
+    readonly heading2: string;
     readonly playAgain: string;
     readonly toStart: string;
     readonly nextChapter: string;
     readonly comingSoon: string;
     readonly next: string;
+    readonly continueTo: string;
   };
   readonly debug: {
     readonly heading: string;
@@ -113,9 +160,11 @@ export const en: GameStrings = {
     settings: 'Settings',
     back: 'Back',
     subtitle: 'A quiet walk in a grey valley.',
+    version: 'Build',
   },
   questions: {
     heading: 'Two questions before you start',
+    headingEnd: 'Two questions before you go',
     receive: 'How easy is it for you to receive help or gifts?',
     calm: 'How calm do you feel right now?',
     privacy: 'Your answers stay on this device.',
@@ -150,7 +199,11 @@ export const en: GameStrings = {
   },
   hud: {
     breatheIn: 'Hold to breathe in',
-    breatheOut: 'Release to breathe out',
+    breatheOut: 'Hold to breathe out',
+    breatheInShort: 'Breathe in',
+    breatheOutShort: 'Breathe out',
+    breatheInKeys: 'Hold space to breathe in',
+    breatheOutKeys: 'Hold shift to breathe out',
     push: 'Push',
     pause: 'Pause',
     plant: 'Plant',
@@ -180,14 +233,55 @@ export const en: GameStrings = {
     answerNothing: 'I felt nothing yet.',
     reply: 'Thank you for noticing.',
   },
+  reflect2: {
+    question: 'Which weather did you meet most today?',
+    sadness: 'Sadness',
+    anger: 'Anger',
+    worry: 'Worry',
+    none: 'None',
+  },
+  naming: {
+    question: 'What is this weather?',
+    sadness: 'Sadness',
+    anger: 'Anger',
+    worry: 'Worry',
+    lookAgain: 'Look again.',
+  },
+  understand2: {
+    card: 'Dr. Rulin Xiu teaches that we can go inside and simply feel what is there, without pushing it away.',
+  },
+  apply2: {
+    card: 'Three times today, stop. Ask: what do I feel in my body now? Give it a name.',
+  },
+  storm: {
+    thought: 'This is not fair.',
+  },
+  pause2: {
+    heading: 'Take all the time you need. It is okay to stop here.',
+  },
+  settings2: {
+    softStorm: 'Soft storm sounds',
+  },
+  seed2: {
+    tree: 'Tree',
+  },
   understand: {
     card: 'Dr. Rulin Xiu teaches that everything is already given to us. When we do not receive it, it is often we who hold it back.',
   },
   apply: {
     card: 'Your practice for today: three times today, stop. Breathe three times. Notice what is already given to you.',
   },
+  chapters: {
+    chapter1: 'Receive',
+    chapter2: 'Be aware',
+    chapter3: 'Chapter 3',
+    select: 'Chapters',
+    locked: 'Not yet',
+  },
   end: {
     heading: 'Chapter 1 complete.',
+    heading2: 'Chapter 2 complete.',
+    continueTo: 'Walk on',
     playAgain: 'Play again',
     toStart: 'Back to start',
     nextChapter: 'Chapter 2',

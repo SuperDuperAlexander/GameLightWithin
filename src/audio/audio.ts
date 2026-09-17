@@ -13,6 +13,10 @@ export class AudioEngine {
   private breathGain: GainNode | null = null;
   private breathFilter: BiquadFilterNode | null = null;
   private droneGain: GainNode | null = null;
+  private weatherGain: GainNode | null = null;
+  private weatherFilter: BiquadFilterNode | null = null;
+  private nightGain: GainNode | null = null;
+  private cricketGain: GainNode | null = null;
   private muffle: BiquadFilterNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
   private started = false;
@@ -65,6 +69,8 @@ export class AudioEngine {
     this.buildPad(ctx);
     this.buildBreath(ctx);
     this.buildDrone(ctx);
+    this.buildWeather(ctx);
+    this.buildNight(ctx);
   }
 
   private makeNoise(ctx: AudioContext, seconds: number): AudioBuffer {
@@ -158,6 +164,110 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * The sound a weather makes while the player stands in it.
+   *
+   * One filtered noise layer covers all three: rain is a wide band low down,
+   * the storm's wind is lower still, and the worry whisper sits high. They
+   * are one layer rather than three because the player is only ever standing
+   * in one weather, and a layer that is silent still costs a filter.
+   */
+  private buildWeather(ctx: AudioContext): void {
+    if (!this.master || !this.noiseBuffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    this.weatherFilter = ctx.createBiquadFilter();
+    this.weatherFilter.type = 'bandpass';
+    this.weatherFilter.frequency.value = 900;
+    this.weatherFilter.Q.value = 0.7;
+    this.weatherGain = ctx.createGain();
+    this.weatherGain.gain.value = 0;
+    src.connect(this.weatherFilter);
+    this.weatherFilter.connect(this.weatherGain);
+    this.weatherGain.connect(this.master);
+    src.start();
+  }
+
+  /**
+   * Night: a low pad, and crickets.
+   *
+   * The crickets are a narrow band of noise with a fast wobble on it, which is
+   * near enough at this volume and costs two nodes instead of a scheduler
+   * chirping away all night.
+   */
+  private buildNight(ctx: AudioContext): void {
+    if (!this.master || !this.noiseBuffer) return;
+    this.nightGain = ctx.createGain();
+    this.nightGain.gain.value = 0;
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.value = 300;
+    this.nightGain.connect(low);
+    low.connect(this.master);
+    for (const freq of [73.42, 110, 146.83]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.value = 0.3;
+      osc.connect(g);
+      g.connect(this.nightGain);
+      osc.start();
+    }
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 4200;
+    band.Q.value = 22;
+    this.cricketGain = ctx.createGain();
+    this.cricketGain.gain.value = 0;
+    // The chirp: a fast wobble on the gain, so it pulses rather than hisses.
+    const wobble = ctx.createOscillator();
+    wobble.type = 'square';
+    wobble.frequency.value = 7.5;
+    const wobbleGain = ctx.createGain();
+    wobbleGain.gain.value = 0.5;
+    wobble.connect(wobbleGain);
+    wobbleGain.connect(this.cricketGain.gain);
+    src.connect(band);
+    band.connect(this.cricketGain);
+    this.cricketGain.connect(this.master);
+    src.start();
+    wobble.start();
+  }
+
+  /**
+   * How loud the weather is, and which one it is.
+   * @param kind which weather the player is standing in
+   * @param amount 0 far away or gone, 1 right inside it
+   */
+  setWeather(kind: 'none' | 'rain' | 'storm' | 'whisper', amount: number): void {
+    if (!this.ctx || !this.weatherGain || !this.weatherFilter) return;
+    const now = this.ctx.currentTime;
+    const a = clamp01(amount);
+    const centre = kind === 'storm' ? 220 : kind === 'whisper' ? 2600 : 950;
+    const q = kind === 'whisper' ? 1.6 : 0.7;
+    // The storm's wind is the one that can be turned down in settings.
+    const loud = kind === 'storm' || kind === 'whisper' ? this.stormVolume : 1;
+    const level = kind === 'none' ? 0 : a * 0.075 * loud;
+    this.weatherGain.gain.setTargetAtTime(level, now, 0.5);
+    this.weatherFilter.frequency.setTargetAtTime(centre, now, 0.6);
+    this.weatherFilter.Q.setTargetAtTime(q, now, 0.6);
+  }
+
+  /** 0 day, 1 night. The pad and the crickets come up together. */
+  setNightAmbience(amount: number): void {
+    if (!this.ctx || !this.nightGain || !this.cricketGain) return;
+    const now = this.ctx.currentTime;
+    const a = clamp01(amount);
+    this.nightGain.gain.setTargetAtTime(a * 0.07, now, 1.2);
+    this.cricketGain.gain.setTargetAtTime(a * 0.014, now, 1.5);
+  }
+
   setVolume(v: number): void {
     this.volume = clamp01(v);
     if (this.master) this.master.gain.value = this.muted ? 0 : this.volume;
@@ -231,6 +341,36 @@ export class AudioEngine {
       case 'uiSelect':
         this.bell(now, 660, 0.04, 0.5);
         break;
+      case 'soundBreath':
+        // The first time the stone answers: the hum and one clear note.
+        this.bell(now, 196, 0.08, 3.2);
+        this.bell(now + 0.25, 392, 0.07, 2.8);
+        break;
+      case 'stoneHum':
+        this.bell(now, 98, 0.07, 4.5);
+        this.bell(now, 196, 0.03, 4);
+        break;
+      case 'stoneLit':
+        this.bell(now, 440, 0.07, 1.8);
+        this.bell(now + 0.06, 660, 0.04, 1.4);
+        break;
+      case 'rain':
+        this.hiss(now, 2.6, 900, 0.05);
+        break;
+      case 'thunder':
+        this.rumble(now);
+        break;
+      case 'whisper':
+        this.hiss(now, 1.8, 2600, 0.035);
+        break;
+      case 'rainbow':
+        for (const [i, f] of [523.3, 659.3, 784, 1046.5].entries())
+          this.bell(now + i * 0.14, f, 0.055, 2.6);
+        break;
+      case 'night':
+        this.bell(now, 174.6, 0.07, 5);
+        this.bell(now + 0.4, 261.6, 0.05, 4.4);
+        break;
     }
   }
 
@@ -270,6 +410,94 @@ export class AudioEngine {
     g.connect(this.master);
     src.start(at);
     src.stop(at + length + 0.05);
+  }
+
+  /**
+   * One note of the sound breath. It is a single soft sine with a slow swell,
+   * so a row of them sounds like one voice rather than a keyboard.
+   */
+  tone(hz: number, seconds: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const at = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = hz;
+    const fifth = ctx.createOscillator();
+    fifth.type = 'sine';
+    fifth.frequency.value = hz * 1.5;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(0.1, at + seconds * 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+    const gq = ctx.createGain();
+    gq.gain.value = 0.35;
+    osc.connect(g);
+    fifth.connect(gq);
+    gq.connect(g);
+    g.connect(this.master);
+    osc.start(at);
+    fifth.start(at);
+    osc.stop(at + seconds + 0.05);
+    fifth.stop(at + seconds + 0.05);
+  }
+
+  /**
+   * Filtered noise: rain when it is low, the worry whisper when it is high.
+   */
+  private hiss(at: number, length: number, centre: number, gain: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noiseBuffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = centre;
+    filter.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain * this.stormVolume, at + length * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + length);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.master);
+    src.start(at);
+    src.stop(at + length + 0.05);
+  }
+
+  /**
+   * Low thunder. A rumble only, never a crack: a sharp sound would make the
+   * storm a threat, and the storm is a feeling.
+   */
+  private rumble(at: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noiseBuffer) return;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(140, at);
+    filter.frequency.linearRampToValueAtTime(60, at + 2.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    // A slow swell, so it arrives rather than hits.
+    g.gain.linearRampToValueAtTime(0.16 * this.stormVolume, at + 0.9);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 3);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(this.master);
+    src.start(at);
+    src.stop(at + 3.1);
+  }
+
+  /**
+   * "Soft storm sounds" in settings. Thunder and the worry whisper are the
+   * two sounds in the game somebody might not want at full strength.
+   */
+  private stormVolume = 1;
+
+  setSoftStorm(on: boolean): void {
+    this.stormVolume = on ? 0.35 : 1;
   }
 
   /** A dull thud for the push that never works. */

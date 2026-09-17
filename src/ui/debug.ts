@@ -11,6 +11,8 @@ export interface DebugInfo {
   fogStep: number;
   seed: string;
   checks: LearningChecks;
+  /** One free line, for whatever the current chapter needs to watch. */
+  extra?: string;
 }
 
 /**
@@ -42,6 +44,7 @@ export class DebugPanel {
       ['calm', info.calm.toFixed(3)],
       ['light', `${info.light}/12`],
       ['fog step', String(info.fogStep)],
+      ...(info.extra ? ([['extra', info.extra]] as [string, string][]) : []),
       ['seed', info.seed],
       ['noHintFind', String(info.checks.stoppedWithoutHint)],
       ['pushCount', String(info.checks.pushCount)],

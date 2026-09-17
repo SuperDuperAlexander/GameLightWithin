@@ -31,6 +31,17 @@ export const colorUniforms = {
   uGreyTint: { value: new THREE.Color(PALETTE.startGrey) },
   /** How much darker the grey side is than the restored one. */
   uGreyDim: { value: 0.8 },
+  /** The colour of the rim light. It warms as the valley returns to colour. */
+  uRimColor: { value: new THREE.Color(PALETTE.skyGrey) },
+  /**
+   * 0 day, 1 night. Chapter 2's last scene turns this up.
+   *
+   * Moonlight is not darkness. Night here keeps the colours the meadows have
+   * won and cools them toward the night blue, so a restored meadow still
+   * reads as restored under the moon.
+   */
+  uNight: { value: 0 },
+  uNightTint: { value: new THREE.Color(PALETTE.night) },
 };
 
 const VERT_HEAD = /* glsl */ `
@@ -43,11 +54,15 @@ vLwWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
 
 const FRAG_HEAD = /* glsl */ `
 varying vec3 vLwWorld;
+uniform float uRimStrength;
+uniform vec3 uRimColor;
 uniform vec4 uZones[${COLOR.maxZones}];
 uniform int uZoneCount;
 uniform float uGlobalColor;
 uniform vec3 uGreyTint;
 uniform float uGreyDim;
+uniform float uNight;
+uniform vec3 uNightTint;
 
 /** How much colour this world point has, 0 grey to 1 full. */
 float lwColorAmount(vec3 worldPos) {
@@ -79,20 +94,48 @@ const FRAG_BODY = /* glsl */ `
   float greyLum = dot(greyed, vec3(0.299, 0.587, 0.114));
   greyed *= min(1.0, (lum * uGreyDim) / max(greyLum, 1e-4));
   diffuseColor.rgb = mix(greyed, diffuseColor.rgb, lwAmount);
+  // Night: cooler and dimmer, but never flat. The colour that is there stays
+  // there, so a moonlit meadow is a moonlit meadow and not a grey one.
+  if (uNight > 0.001) {
+    vec3 moonlit = mix(diffuseColor.rgb, uNightTint * 2.2, 0.38) * 0.92;
+    diffuseColor.rgb = mix(diffuseColor.rgb, moonlit, uNight);
+  }
 }
 `;
 
 /**
- * Makes a material take part in the grey-to-colour system.
- * Call this on every world material.
+ * A rim light, added after the surface has been lit.
+ *
+ * It is what separates a shape from what is behind it. Without it an untextured
+ * world reads as flat blocks; with it every hill, tree and rock keeps a clear
+ * edge against the sky.
  */
-export function applyColorRestore(material: THREE.Material): THREE.Material {
+const FRAG_RIM = /* glsl */ `
+{
+  vec3 lwN = normalize(normal);
+  vec3 lwV = normalize(vViewPosition);
+  float lwRim = 1.0 - clamp(dot(lwN, lwV), 0.0, 1.0);
+  lwRim = pow(lwRim, 2.6) * uRimStrength;
+  // Brighter where the surface also faces up, so the light reads as coming
+  // from the sky rather than from the camera.
+  lwRim *= 0.45 + 0.55 * clamp(lwN.y * 0.5 + 0.5, 0.0, 1.0);
+  gl_FragColor.rgb += uRimColor * lwRim;
+}
+`;
+
+/**
+ * Makes a material take part in the grey-to-colour system, and gives it a rim
+ * light. Call this on every world material.
+ */
+export function applyColorRestore(material: THREE.Material, rim = 0): THREE.Material {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uZones = colorUniforms.uZones;
     shader.uniforms.uZoneCount = colorUniforms.uZoneCount;
     shader.uniforms.uGlobalColor = colorUniforms.uGlobalColor;
     shader.uniforms.uGreyTint = colorUniforms.uGreyTint;
     shader.uniforms.uGreyDim = colorUniforms.uGreyDim;
+    shader.uniforms.uRimColor = colorUniforms.uRimColor;
+    shader.uniforms.uRimStrength = { value: rim };
 
     shader.vertexShader =
       VERT_HEAD +
@@ -100,15 +143,22 @@ export function applyColorRestore(material: THREE.Material): THREE.Material {
         '#include <begin_vertex>',
         '#include <begin_vertex>\n' + VERT_BODY,
       );
-    shader.fragmentShader =
+
+    let frag =
       FRAG_HEAD +
       shader.fragmentShader.replace(
         '#include <color_fragment>',
         '#include <color_fragment>\n' + FRAG_BODY,
       );
+    // The rim goes on after the lighting but before the distance haze, so a
+    // far-off hill cannot rim-light its way back out of the mist.
+    if (rim > 0 && frag.includes('#include <fog_fragment>')) {
+      frag = frag.replace('#include <fog_fragment>', FRAG_RIM + '\n#include <fog_fragment>');
+    }
+    shader.fragmentShader = frag;
   };
   // Materials with the same program must not be shared with untouched ones.
-  material.customProgramCacheKey = () => 'lw-color-restore';
+  material.customProgramCacheKey = () => `lw-color-restore-${rim > 0 ? 'rim' : 'flat'}`;
   return material;
 }
 

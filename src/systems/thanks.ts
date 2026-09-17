@@ -3,8 +3,11 @@ import type { EventBus } from '../core/events';
 import { dist2d } from '../core/math';
 
 /**
- * The thanks mechanic. Standing on the finished bridge and taking three calm
- * breaths turns the bridge golden and lets colour flow across the valley.
+ * The thanks mechanic: standing in one place and giving calm breaths to it.
+ *
+ * In chapter 1 the place is the finished bridge and the thanks turns it
+ * golden. In chapter 2 it is the heart tree the player grew. The mechanic is
+ * the same either way, so it lives here once and each chapter says where.
  */
 export class ThanksSystem {
   breaths = 0;
@@ -15,7 +18,8 @@ export class ThanksSystem {
 
   constructor(
     private readonly bus: EventBus,
-    private readonly bridge: { x: number; z: number },
+    /** Where the thanks is given. A chapter may move it as its world grows. */
+    readonly spot: { x: number; z: number },
   ) {
     bus.on('bridgeComplete', () => (this.bridgeReady = true));
   }
@@ -24,8 +28,13 @@ export class ThanksSystem {
     return this.bridgeReady;
   }
 
+  /** Opens the thanks without a bridge, for a chapter that has none. */
+  arm(): void {
+    this.bridgeReady = true;
+  }
+
   onBridge(px: number, pz: number): boolean {
-    return this.bridgeReady && dist2d(px, pz, this.bridge.x, this.bridge.z) <= THANKS.radius;
+    return this.bridgeReady && dist2d(px, pz, this.spot.x, this.spot.z) <= THANKS.radius;
   }
 
   onBreath(calm: boolean, px: number, pz: number): void {

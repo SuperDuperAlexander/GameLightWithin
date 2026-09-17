@@ -17,7 +17,7 @@ export class ChecksSystem {
   private dirty = false;
   private sinceWrite = 0;
 
-  constructor() {
+  constructor(private readonly chapter: 1 | 2 = 1) {
     this.data = loadChecks();
   }
 
@@ -27,6 +27,14 @@ export class ChecksSystem {
     this.data.leftFogCount = 0;
     this.data.walkedAwayFromSeed = false;
     this.data.timePerScene = {};
+    this.data.receivedWithoutSign = false;
+    this.data.bodyCheckTime = 0;
+    this.data.ranFromCloudCount = 0;
+    this.data.namingAttempts = { sadness: 0, anger: 0, worry: 0 };
+    this.data.soundBreathCount = 0;
+    this.data.leftStormCount = 0;
+    this.data.seedTypesPlanted = [];
+    this.data.heartSeedFirstTry = false;
     this.sceneClock = 0;
     this.dirty = true;
     this.persist();
@@ -80,7 +88,7 @@ export class ChecksSystem {
   toJson(): string {
     this.flushScene();
     return JSON.stringify(
-      { chapter: 1, recordedAt: new Date().toISOString(), checks: this.data },
+      { chapter: this.chapter, recordedAt: new Date().toISOString(), checks: this.data },
       null,
       2,
     );

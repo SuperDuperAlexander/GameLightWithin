@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import {
+  BREATH,
   CALM,
   COLOR,
   HINTS,
   LAYOUT,
   MANIFEST,
+  PLAYER,
   RECEIVE,
   SCENE_STARTS,
   THANKS,
@@ -16,7 +18,19 @@ import { AudioEngine } from './audio/audio';
 import type { Game } from './game';
 import { clamp01, dist2d, smoothstep } from './core/math';
 import type { SettingsData } from './core/save';
-import { clearSave, loadSave, loadSettings, saveSave, saveSettings } from './core/save';
+import { isLastChapter, nextChapter } from './content/chapters';
+import type { ChapterId } from './content/chapters';
+import {
+  chapterProgress,
+  isChapterComplete,
+  loadSave,
+  loadSettings,
+  saveSave,
+  saveSettings,
+  setChapterProgress,
+  unlockedChapters,
+} from './core/save';
+
 import { BreathSystem } from './systems/breath';
 import { CalmSystem } from './systems/calm';
 import { ChecksSystem } from './systems/checks';
@@ -26,8 +40,16 @@ import { ManifestSystem } from './systems/manifest';
 import { ReceiveSystem } from './systems/receive';
 import { ThanksSystem } from './systems/thanks';
 import { TransformSystem } from './systems/transform';
-import { Butterfly, FogVolume, MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
-import { terrainHeight } from './world/terrain';
+import {
+  Butterfly,
+  FogVolume,
+  MoteFlow,
+  Sprout,
+  SpringGlow,
+  WakingMist,
+  buildBird,
+} from './world/effects';
+import { height as groundHeight } from './world/place';
 import { DebugPanel } from './ui/debug';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
@@ -43,7 +65,7 @@ type Phase =
   | 'end';
 
 /** How many calm breaths scene 1 needs before the glow appears. */
-const WAKE_BREATHS = 3;
+const WAKE_BREATHS = BREATH.wakeBreaths;
 
 /**
  * Chapter 1 "Receive". This class owns the flow: the start screen, the six
@@ -71,13 +93,22 @@ export class Chapter1 {
   private readonly sprout = new Sprout();
   private readonly bird = buildBird();
   private readonly butterfly = new Butterfly();
+  private readonly wakingMist = new WakingMist();
+  /** 0 clear, 1 thickest. Only matters before the first breath. */
+  private mist: number = PLAYER.wakingMistBase;
 
   private phase: Phase = 'start';
   private scene: SceneId = 1;
   private settings: SettingsData;
   private save = loadSave();
+  /** This chapter's own slot in the save file. */
+  private readonly chapterId = 1 as const;
+  /** The router sets this so a chapter can hand over to another one. */
+  onLeaveToChapter: ((id: ChapterId) => void) | null = null;
   private wakeBreaths = 0;
-  private movementLocked = true;
+  /** 0 to 1, how much of their stride the player has. */
+  private stride: number = PLAYER.wakingWalkFactor;
+  private hasBreathed = false;
   /** Automatic calm breathing for the browser tests. */
   private autoClock = 0;
   private autoHeld = false;
@@ -134,26 +165,27 @@ export class Chapter1 {
       this.bird,
       this.butterfly.group,
     );
+    this.game.world.player.group.add(this.wakingMist.group);
 
     this.fogVolume.group.position.set(
       LAYOUT.fog.x,
-      terrainHeight(LAYOUT.fog.x, LAYOUT.fog.z),
+      groundHeight(LAYOUT.fog.x, LAYOUT.fog.z),
       LAYOUT.fog.z,
     );
     this.sprout.group.position.set(
       LAYOUT.seedSpot.x,
-      terrainHeight(LAYOUT.seedSpot.x, LAYOUT.seedSpot.z),
+      groundHeight(LAYOUT.seedSpot.x, LAYOUT.seedSpot.z),
       LAYOUT.seedSpot.z,
     );
     this.bird.position.set(
       LAYOUT.bird.x,
-      terrainHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17,
+      groundHeight(LAYOUT.bird.x, LAYOUT.bird.z) + 0.17,
       LAYOUT.bird.z,
     );
 
     for (const spring of this.receive.springs) {
       const glow = new SpringGlow();
-      const anchor = this.game.world.springAnchors.get(spring.config.id);
+      const anchor = this.game.world.anchors.get(spring.config.id);
       if (anchor) {
         anchor.visible = spring.revealed;
         glow.mesh.position.set(anchor.position.x, anchor.position.y + 1, anchor.position.z);
@@ -194,6 +226,7 @@ export class Chapter1 {
 
   private wireEvents(): void {
     this.bus.on('breathCompleted', ({ calm }) => {
+      this.hasBreathed = true;
       this.breathsTotal++;
       if (calm) this.breathsCalm++;
       this.onBreathCompleted(calm);
@@ -201,7 +234,7 @@ export class Chapter1 {
     this.bus.on('zoneAdded', ({ x, z, radius }) => this.game.world.color.addZone(x, z, radius));
     this.bus.on('lightCollected', ({ from, amount }) => this.onLightCollected(from, amount));
     this.bus.on('springRevealed', ({ id }) => {
-      const anchor = this.game.world.springAnchors.get(id);
+      const anchor = this.game.world.anchors.get(id);
       if (anchor) anchor.visible = true;
       this.bus.emit('cue', { id: 'spring' });
     });
@@ -216,7 +249,7 @@ export class Chapter1 {
       if (id === 'butterfly') {
         this.butterfly.fly(
           LAYOUT.butterflyPath.map(
-            (p) => new THREE.Vector3(p.x, terrainHeight(p.x, p.z) + 1.3, p.z),
+            (p) => new THREE.Vector3(p.x, groundHeight(p.x, p.z) + 1.3, p.z),
           ),
         );
       }
@@ -226,7 +259,7 @@ export class Chapter1 {
   /** Writes everything that is only in memory. Safe to call at any time. */
   private saveNow(): void {
     this.checks.flushScene();
-    this.save.light = this.light.get();
+    setChapterProgress(this.save, this.chapterId, { light: this.light.get() });
     saveSave(this.save);
   }
 
@@ -245,17 +278,25 @@ export class Chapter1 {
   }
 
   private showStart(): void {
-    this.panels.startScreen(
-      () => this.startFresh(),
-      () => this.openSettings(() => this.showStart()),
-      this.save.scene > 1 && !this.save.completed,
-      () => this.resumeSave(),
-    );
+    const progress = chapterProgress(this.save, this.chapterId);
+    const canResume = progress.scene > 1 && !isChapterComplete(this.save, this.chapterId);
+    this.panels.startScreen({
+      unlocked: unlockedChapters(this.save, this.chapterId),
+      resumeChapter: canResume ? this.chapterId : null,
+      onChapter: (id) => {
+        if (id === this.chapterId) this.startFresh();
+        else this.onLeaveToChapter?.(id);
+      },
+      onResume: () => this.resumeSave(),
+      onSettings: () => this.openSettings(() => this.showStart()),
+    });
   }
 
   private startFresh(): void {
-    clearSave();
-    this.save = loadSave();
+    // Only this chapter starts over. A player walking chapter 1 again must not
+    // lose the chapters they have already finished.
+    setChapterProgress(this.save, this.chapterId, { scene: 1, light: 0, completed: false });
+    saveSave(this.save);
     this.checks.reset();
     this.phase = 'startQuestions';
     this.panels.questions(this.save.startAnswers, (a) => {
@@ -266,8 +307,9 @@ export class Chapter1 {
   }
 
   private resumeSave(): void {
-    this.light.set(this.save.light);
-    this.enterScene(this.save.scene, true);
+    const progress = chapterProgress(this.save, this.chapterId);
+    this.light.set(progress.light);
+    this.enterScene(progress.scene as SceneId, true);
   }
 
   /** `?scene=N` starts directly at a scene with the right amount of light. */
@@ -298,20 +340,27 @@ export class Chapter1 {
       this.game.world.setBridgeRise(1);
     }
     if (scene >= 3) this.calm.set(CALM.heartThreshold + 0.05);
+    // A player who starts past the opening has already taken their first
+    // breath, so they do not start inside the waking mist.
+    if (scene >= 2) {
+      this.hasBreathed = true;
+      this.mist = 0;
+      this.stride = 1;
+      this.wakingMist.setStrength(0, PLAYER.wakingMistRadius);
+    }
     this.enterScene(scene, true);
   }
 
   private enterScene(scene: SceneId, place: boolean): void {
     this.scene = scene;
-    this.save.scene = scene;
-    this.save.light = this.light.get();
+    setChapterProgress(this.save, this.chapterId, { scene, light: this.light.get() });
     saveSave(this.save);
     this.checks.enterScene(scene);
     this.phase = 'playing';
     this.panels.close();
     this.hud.setVisible(true);
     this.game.setPaused(false);
-    this.movementLocked = scene === 1;
+
     if (scene === 1) this.wakeBreaths = 0;
     if (place) {
       const start = SCENE_STARTS[scene];
@@ -329,21 +378,31 @@ export class Chapter1 {
 
   private finishChapter(): void {
     this.checks.flushScene();
-    this.save.completed = true;
+    setChapterProgress(this.save, this.chapterId, { completed: true });
     saveSave(this.save);
     this.phase = 'reflect';
     this.hud.setVisible(false);
+    this.game.autoWalk = null;
     this.panels.reflect(() => {
       this.phase = 'understand';
       this.panels.card(t().understand.card, () => {
         this.phase = 'apply';
         this.panels.card(t().apply.card, () => {
           this.phase = 'endQuestions';
-          this.panels.questions(this.save.endAnswers, (a) => {
-            this.save.endAnswers = a;
-            saveSave(this.save);
+          if (isLastChapter(this.chapterId)) {
+            this.phase = 'endQuestions';
+            this.panels.questions(
+              this.save.endAnswers,
+              (a) => {
+                this.save.endAnswers = a;
+                saveSave(this.save);
+                this.showEnd();
+              },
+              true,
+            );
+          } else {
             this.showEnd();
-          });
+          }
         });
       });
     });
@@ -351,13 +410,19 @@ export class Chapter1 {
 
   private showEnd(): void {
     this.phase = 'end';
-    this.panels.chapterEnd(
-      () => window.location.reload(),
-      () => {
-        clearSave();
-        window.location.reload();
+    this.panels.chapterEnd({
+      heading: t().end.heading,
+      current: this.chapterId,
+      next: nextChapter(this.chapterId),
+      onAgain: () => window.location.reload(),
+      onStart: () => {
+        window.location.search = '';
       },
-    );
+      onNext: () => {
+        const next = nextChapter(this.chapterId);
+        if (next) this.onLeaveToChapter?.(next);
+      },
+    });
   }
 
   private openPause(): void {
@@ -400,13 +465,15 @@ export class Chapter1 {
   // ---------- actions ----------
 
   private onPush(): void {
-    if (this.scene !== 4 || !this.transform.pushAvailable) return;
+    // Never gated on the scene number: the push belongs to the fog, and the
+    // fog is wherever the player finds it.
+    if (!this.transform.pushAvailable) return;
     this.transform.push();
     this.game.camera.addShake(0.5);
   }
 
   private onInteract(): void {
-    if (this.scene !== 5 || this.manifest.state !== 'none') return;
+    if (this.manifest.state !== 'none') return;
     const p = this.game.world.playerPosition;
     if (dist2d(p.x, p.z, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) > 4) return;
     this.panels.seedChoice(
@@ -435,21 +502,21 @@ export class Chapter1 {
 
     if (this.scene === 1 && calm) {
       this.wakeBreaths++;
-      if (this.wakeBreaths >= WAKE_BREATHS) {
-        this.movementLocked = false;
-        this.advanceTo(2);
-      }
+      if (this.wakeBreaths >= WAKE_BREATHS) this.advanceTo(2);
     }
 
     const spring = this.receive.onBreath(calm, p.x, p.z);
     if (spring) {
-      const anchor = this.game.world.springAnchors.get(spring.config.id);
+      const anchor = this.game.world.anchors.get(spring.config.id);
       if (anchor) {
-        this.motes.send(
-          this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
-          RECEIVE.moteFlightSeconds,
-          () => this.light.add(1),
-        );
+        // One mote per light drawn, so the player sees what they received.
+        for (let i = 0; i < spring.lastGiven; i++) {
+          this.motes.send(
+            this.tmp.set(anchor.position.x, anchor.position.y + 0.8, anchor.position.z).clone(),
+            RECEIVE.moteFlightSeconds + i * 0.35,
+            () => this.light.add(1),
+          );
+        }
       }
     }
 
@@ -478,15 +545,21 @@ export class Chapter1 {
     const walking = this.game.speed > 0.25;
 
     // Automatic calm breathing for the browser tests.
-    let held = this.game.input.breathHeld;
-    if (this.game.flags.autobreathe && this.phase === 'playing') held = this.autoBreathe(dt);
+    let inHeld = this.game.input.breathInHeld;
+    let outHeld = this.game.input.breathOutHeld;
+    if (this.game.flags.autobreathe && this.phase === 'playing') {
+      const auto = this.autoBreathe(dt);
+      inHeld = auto.inHeld;
+      outHeld = auto.outHeld;
+    }
 
     if (this.phase === 'playing' && !this.panels.isOpen) {
-      this.game.worldInputBlocked = this.movementLocked;
+      this.game.worldInputBlocked = false;
       // Desktop keys: E pushes, Enter plants. The on-screen buttons do the same.
       if (this.game.input.pushPressed) this.onPush();
       if (this.game.input.interactPressed) this.onInteract();
-      this.breath.update(dt, held, this.game.speed);
+      this.breath.update(dt, inHeld, outHeld, this.game.speed);
+      this.updateStride(dt, walking);
       this.calm.update(dt, walking);
       this.checks.update(dt);
       this.runScene(dt, p.x, p.z);
@@ -496,6 +569,7 @@ export class Chapter1 {
     this.motes.update(dt, this.game.world.player.chestWorld(this.tmp));
     this.fogVolume.update(dt);
     this.sprout.update(dt);
+    this.wakingMist.update(dt);
     this.butterfly.update(dt);
     for (const glow of this.springGlows.values()) glow.update(dt);
 
@@ -520,63 +594,104 @@ export class Chapter1 {
     this.game.light = this.light.get();
   }
 
-  private autoBreathe(dt: number): boolean {
+  private autoBreathe(dt: number): { inHeld: boolean; outHeld: boolean } {
     const preset = this.breath.getPreset();
     const cycle = preset.inhale + preset.exhale;
     this.autoClock = (this.autoClock + dt) % cycle;
-    this.autoHeld = this.autoClock < preset.inhale;
-    return this.autoHeld;
+    const inHeld = this.autoClock < preset.inhale;
+    this.autoHeld = inHeld;
+    return { inHeld, outHeld: !inHeld };
   }
 
-  private runScene(dt: number, px: number, pz: number): void {
-    switch (this.scene) {
-      case 1:
-      case 2: {
-        const spring1 = this.receive.get('spring1');
-        if (spring1?.empty) this.advanceTo(3);
-        break;
-      }
-      case 3: {
-        const spring2 = this.receive.get('spring2');
-        this.hints.updateScene3(dt, spring2?.revealed ?? false);
-        if (spring2?.revealed && !this.hints.birdShown) {
-          this.checks.set('stoppedWithoutHint', true);
-        }
-        if (spring2?.empty) this.advanceTo(4);
-        break;
-      }
-      case 4: {
-        this.transform.update(dt, px, pz);
-        if (this.transform.done && this.transform.dissolveTime >= TRANSFORM.dissolveSeconds) {
-          this.advanceTo(5);
-        }
-        break;
-      }
-      case 5: {
-        this.manifest.update(dt, px, pz);
-        this.hints.updateScene5(dt, px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z);
-        if (this.manifest.hasBeenAway && !this.hints.butterflyShown) {
-          this.checks.set('walkedAwayFromSeed', true);
-        }
-        if (this.manifest.state === 'complete') {
-          this.game.world.setBridgeRise(
-            clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds),
-          );
-          if (this.manifest.riseTime >= MANIFEST.bridgeRiseSeconds) this.advanceTo(6);
-        }
-        break;
-      }
-      case 6: {
-        this.thanks.update(dt);
-        if (this.thanks.complete && this.game.world.color.globalColor >= 0.999)
-          this.finishChapter();
-        break;
-      }
+  /**
+   * The player's stride. They can set off at once, but heavily, as if not yet
+   * awake. The first finished breath opens the stride up, and it stays open.
+   */
+  /**
+   * The waking mist and the short stride that goes with it.
+   *
+   * The player may walk from the first second. Until their first finished
+   * breath they do it inside their own mist, with a short stride, and pushing
+   * on without stopping thickens it. One breath clears it for good.
+   */
+  private updateStride(dt: number, walking: boolean): void {
+    if (this.hasBreathed) {
+      this.mist = Math.max(0, this.mist - dt / PLAYER.wakingEaseSeconds);
+    } else if (walking) {
+      this.mist = Math.min(PLAYER.wakingMistMax, this.mist + PLAYER.wakingMistGainPerSecond * dt);
+    } else {
+      // Standing still lets it settle, so stopping already feels like relief.
+      this.mist = Math.max(PLAYER.wakingMistBase, this.mist - dt * 0.12);
     }
 
-    // Scene 5's third spring and scene 4's fog keep running once reached.
-    if (this.scene >= 4) this.transform.update(dt, px, pz);
-    if (this.scene >= 5 && this.manifest.state === 'growing') this.manifest.update(dt, px, pz);
+    // The thicker the mist, the shorter the stride. Never below the floor.
+    const target = this.hasBreathed
+      ? 1
+      : PLAYER.wakingWalkFactor + (1 - PLAYER.wakingWalkFactor) * (1 - this.mist) * 0.4;
+    const step = dt / PLAYER.wakingEaseSeconds;
+    this.stride =
+      this.stride < target
+        ? Math.min(target, this.stride + step)
+        : Math.max(target, this.stride - step);
+    this.game.strideFactor = this.stride;
+    this.wakingMist.setStrength(this.mist, PLAYER.wakingMistRadius);
+  }
+
+  /**
+   * Runs every mechanic, every frame, wherever the player is standing.
+   *
+   * The scene number only records how far the player has come. It must never
+   * gate a system: the valley is one open place, and the only real barrier in
+   * it is the gap in the ground. Gating the fog behind "scene 4" meant a player
+   * who walked past the hidden second spring found a fog that did nothing at
+   * all, and with it no transform, no seed and no bridge.
+   */
+  private runScene(dt: number, px: number, pz: number): void {
+    this.transform.update(dt, px, pz);
+    this.manifest.update(dt, px, pz);
+    this.thanks.update(dt);
+
+    const spring2 = this.receive.get('spring2');
+    this.hints.updateScene3(dt, spring2?.revealed ?? false);
+    if (spring2?.revealed && !this.hints.birdShown) {
+      this.checks.set('stoppedWithoutHint', true);
+    }
+
+    this.hints.updateScene5(dt, px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z);
+    if (this.manifest.hasBeenAway && !this.hints.butterflyShown) {
+      this.checks.set('walkedAwayFromSeed', true);
+    }
+
+    if (this.manifest.state === 'complete') {
+      this.game.world.setBridgeRise(clamp01(this.manifest.riseTime / MANIFEST.bridgeRiseSeconds));
+    }
+
+    this.updateProgress();
+
+    if (this.thanks.complete && this.game.world.color.globalColor >= 0.999) {
+      this.finishChapter();
+    }
+  }
+
+  /**
+   * Works out how far the player has come and records it. The player may do
+   * the parts out of order, so this only ever moves forward.
+   */
+  private updateProgress(): void {
+    let reached: SceneId = 1;
+    if (this.wakeBreaths >= WAKE_BREATHS) reached = 2;
+    if (this.receive.get('spring1')?.empty) reached = 3;
+    if (this.receive.get('spring2')?.empty) reached = 4;
+    if (this.transform.done && this.transform.dissolveTime >= TRANSFORM.dissolveSeconds) {
+      reached = 5;
+    }
+    if (
+      this.manifest.state === 'complete' &&
+      this.manifest.riseTime >= MANIFEST.bridgeRiseSeconds
+    ) {
+      reached = 6;
+    }
+    if (reached > this.scene) this.advanceTo(reached);
   }
 
   private updateHud(dt: number, px: number, pz: number): void {
@@ -610,13 +725,9 @@ export class Chapter1 {
     this.fogVolume.group.position.x = this.transform.x;
     this.fogVolume.group.position.z = this.transform.z;
 
-    this.hud.setPushVisible(
-      this.scene === 4 && this.transform.pushAvailable && !this.transform.done,
-    );
+    this.hud.setPushVisible(this.transform.pushAvailable && !this.transform.done);
     this.hud.setInteractVisible(
-      this.scene === 5 &&
-        this.manifest.state === 'none' &&
-        dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
+      this.manifest.state === 'none' && dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4,
     );
 
     // Spring glows: bright while they still hold light, gentle once empty.
@@ -652,7 +763,8 @@ export class Chapter1 {
     this.hud.breathCircle.update(
       this.breath.targetRing,
       this.breath.playerRing,
-      this.breath.targetPhase() === 'inhale',
+      // The label follows what the player should do next, not the demo rhythm.
+      this.breath.playerPhase() === 'inhale',
       this.game.time,
     );
     this.hud.breathCircle.setVisible(this.phase === 'playing');
@@ -663,7 +775,6 @@ export class Chapter1 {
   private currentHint(px: number, pz: number): string | null {
     if (this.phase !== 'playing') return null;
     if (
-      this.scene === 5 &&
       this.manifest.state === 'none' &&
       dist2d(px, pz, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z) <= 4
     ) {
@@ -705,6 +816,11 @@ export class Chapter1 {
       breathsCalm: this.breathsCalm,
       wakeBreaths: this.wakeBreaths,
       speed: Number(this.game.speed.toFixed(3)),
+      stride: Number(this.stride.toFixed(3)),
+      mist: Number(this.mist.toFixed(3)),
+      px: Number(this.game.world.playerPosition.x.toFixed(3)),
+      pz: Number(this.game.world.playerPosition.z.toFixed(3)),
+      yaw: Number(this.game.camera.yaw.toFixed(4)),
       autoHeld: this.autoHeld,
       autoClock: Number(this.autoClock.toFixed(2)),
       preset: this.breath.getPreset().id,
@@ -756,6 +872,14 @@ export class Chapter1 {
         return this.manifest.plant(paid, this.calm.get());
       }) as (...args: any[]) => unknown,
       setCalm: ((v: number) => this.calm.set(v)) as (...args: any[]) => unknown,
+      /** Clears the waking mist, so a test can measure the world behind it. */
+      clearMist: (() => {
+        this.hasBreathed = true;
+        this.mist = 0;
+        this.stride = 1;
+        this.game.strideFactor = 1;
+        this.wakingMist.setStrength(0, PLAYER.wakingMistRadius);
+      }) as (...args: any[]) => unknown,
       setGlobalColor: ((v: number) => {
         this.game.world.color.setGlobalTarget(v, 0.001);
       }) as (...args: any[]) => unknown,
@@ -763,7 +887,7 @@ export class Chapter1 {
         const spring = this.receive.get(id);
         if (!spring) return false;
         spring.revealed = true;
-        const anchor = this.game.world.springAnchors.get(id);
+        const anchor = this.game.world.anchors.get(id);
         if (anchor) anchor.visible = true;
         return true;
       }) as (...args: any[]) => unknown,

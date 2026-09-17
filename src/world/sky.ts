@@ -21,6 +21,12 @@ export function buildSky(strokes: number): THREE.Mesh {
       uViolet: { value: new THREE.Color(PALETTE.farHillsViolet) },
       uSun: { value: new THREE.Color(PALETTE.sun) },
       uStrokes: { value: strokes },
+      /** 0 day, 1 night. Chapter 2 turns this up for its last scene. */
+      uNight: { value: 0 },
+      /** 0 morning, 1 evening. Moves the sun and warms the light. */
+      uDay: { value: 0 },
+      uNightSky: { value: new THREE.Color(PALETTE.night) },
+      uStars: { value: new THREE.Color(PALETTE.stars) },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -39,6 +45,10 @@ export function buildSky(strokes: number): THREE.Mesh {
       uniform vec3 uViolet;
       uniform vec3 uSun;
       uniform float uStrokes;
+      uniform float uNight;
+      uniform float uDay;
+      uniform vec3 uNightSky;
+      uniform vec3 uStars;
 
       float hash(vec2 p) {
         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -61,19 +71,51 @@ export function buildSky(strokes: number): THREE.Mesh {
         vec3 grey = mix(uGreySky * 0.82, uGreySky * 1.04, pow(h, 0.7));
         vec3 warm = mix(uWarmSky, uViolet * 1.05, pow(h, 1.3));
         vec3 sky = mix(grey, warm, uGlobalColor);
+        // The day runs from morning to evening: the horizon warms and the
+        // dome above it deepens, without the whole sky changing hue at once.
+        sky = mix(sky, mix(uWarmSky * 1.06, uViolet * 0.86, pow(h, 0.9)), uDay * 0.55);
 
         // Soft cloud strokes. Strokes are stretched sideways like brush marks.
         vec2 p = vec2(atan(vDir.z, vDir.x) * 1.6, vDir.y * 3.4);
-        float clouds = fbm(p * vec2(1.0, 2.6) + vec2(uTime * 0.006, 0.0));
-        clouds = smoothstep(0.55, 0.92, clouds) * smoothstep(0.02, 0.45, h) * (uStrokes / 12.0 * 0.5 + 0.3);
-        vec3 cloudCol = mix(vec3(0.78), mix(vec3(0.92), uSun, 0.35), uGlobalColor);
-        sky = mix(sky, cloudCol, clouds * 0.45);
+        // Two layers: broad banks that drift, and finer strokes on top of them.
+        float bank = fbm(p * vec2(0.55, 1.5) + vec2(uTime * 0.004, 0.0));
+        float detail = fbm(p * vec2(1.6, 3.2) + vec2(uTime * 0.011, 0.0));
+        float clouds = bank * 0.65 + detail * 0.35;
+        clouds = smoothstep(0.44, 0.78, clouds) * smoothstep(0.0, 0.35, h) * (uStrokes / 12.0 * 0.6 + 0.5);
+        vec3 cloudCol = mix(vec3(0.84), mix(vec3(1.0), uSun, 0.28), uGlobalColor);
+        sky = mix(sky, cloudCol, clouds * 0.66);
 
-        // One soft sun, warmer as colour returns.
-        vec3 sunDir = normalize(vec3(0.45, 0.42, -0.79));
+        // One soft sun. It sinks toward the horizon as the day runs on.
+        vec3 sunDir = normalize(vec3(0.45, mix(0.42, 0.08, uDay), -0.79));
         float d = max(dot(vDir, sunDir), 0.0);
-        sky += uSun * pow(d, 40.0) * (0.12 + uGlobalColor * 0.4);
-        sky += uSun * pow(d, 6.0) * 0.035 * (0.3 + uGlobalColor);
+        sky += uSun * pow(d, 40.0) * (0.12 + uGlobalColor * 0.4) * (1.0 - uNight);
+        sky += uSun * pow(d, 6.0) * 0.035 * (0.3 + uGlobalColor) * (1.0 - uNight);
+
+        if (uNight > 0.001) {
+          // Night: one deep blue, darkest overhead, with stars above the haze.
+          vec3 night = mix(uNightSky * 1.35, uNightSky * 0.7, pow(h, 0.8));
+          // Stars are points of a coarse hash, so they hold still while the
+          // clouds drift. They fade out near the horizon, where the haze is.
+          vec2 sp = vDir.xz / max(abs(vDir.y) + 0.15, 0.15) * 5.0;
+          vec2 cell = floor(sp * 2.2);
+          // Only about one cell in eight holds a star, and the star sits
+          // somewhere inside it, so the sky is not a regular grid of dots.
+          float pick = hash(cell);
+          float star = 0.0;
+          if (pick > 0.86) {
+            vec2 at = vec2(hash(cell + 3.1), hash(cell + 7.7));
+            float d = length(fract(sp * 2.2) - at);
+            star = smoothstep(0.09, 0.0, d) * (0.5 + hash(cell + 11.3));
+          }
+          star *= smoothstep(0.05, 0.4, h);
+          night += uStars * star * 1.5;
+          // A moon, opposite where the sun went down.
+          vec3 moonDir = normalize(vec3(-0.35, 0.5, 0.82));
+          float m = max(dot(vDir, moonDir), 0.0);
+          night += uStars * pow(m, 900.0) * 1.4;
+          night += uStars * pow(m, 20.0) * 0.05;
+          sky = mix(sky, night, uNight);
+        }
 
         gl_FragColor = vec4(sky, 1.0);
       }
@@ -90,4 +132,18 @@ export function updateSky(sky: THREE.Mesh, time: number): void {
   const mat = sky.material as THREE.ShaderMaterial;
   const u = mat.uniforms.uTime;
   if (u) u.value = time;
+}
+
+/** 0 day, 1 night. Everything else in the sky follows this one number. */
+export function setSkyNight(sky: THREE.Mesh, night: number): void {
+  const mat = sky.material as THREE.ShaderMaterial;
+  const u = mat.uniforms.uNight;
+  if (u) u.value = Math.max(0, Math.min(1, night));
+}
+
+/** 0 morning, 1 evening. */
+export function setSkyDay(sky: THREE.Mesh, day: number): void {
+  const mat = sky.material as THREE.ShaderMaterial;
+  const u = mat.uniforms.uDay;
+  if (u) u.value = Math.max(0, Math.min(1, day));
 }

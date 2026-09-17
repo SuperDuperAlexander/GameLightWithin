@@ -84,6 +84,9 @@ test('panel text meets WCAG AA contrast', async ({ page }) => {
 test('restored colour also reads as brighter in greyscale', async ({ page }) => {
   await page.goto('/?scene=1&quality=medium&nopaint=1');
   await page.waitForFunction(() => document.body.dataset.ready === '1');
+  // The player wakes inside a mist. It sits in front of everything and would
+  // wash out both readings, so it is cleared before measuring the world.
+  await call(page, 'clearMist');
   await page.waitForTimeout(2500);
 
   const meanGrey = async (): Promise<number> => {
