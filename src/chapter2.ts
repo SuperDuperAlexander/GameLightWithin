@@ -17,7 +17,7 @@ import {
   WORLD2,
 } from './content/chapter2';
 import { HINTS2 } from './content/chapter2';
-import type { FeelingType, Scene2Id } from './content/chapter2';
+import type { BodyPoint, FeelingType, Scene2Id } from './content/chapter2';
 import { CHAPTERS, isLastChapter, nextChapter } from './content/chapters';
 import type { ChapterId } from './content/chapters';
 import { t } from './content/strings.en';
@@ -144,6 +144,10 @@ export class Chapter2 implements ChapterRunner {
   private breathsCalm = 0;
   private hasBreathed = false;
   private readonly tmp = new THREE.Vector3();
+  /** The body stones, looked up once instead of searched for every frame. */
+  private readonly stoneAnchors = new Map<BodyPoint, THREE.Group>();
+  /** Which stone is lit, so the others are only dimmed when it changes. */
+  private litStone: BodyPoint | null = null;
 
   constructor(private readonly game: Game) {
     this.bus = game.bus;
@@ -262,6 +266,11 @@ export class Chapter2 implements ChapterRunner {
       LAYOUT2.bird.z,
     );
     this.bird.visible = false;
+
+    for (const stone of LAYOUT2.bodyStones) {
+      const anchor = this.game.world.anchors.get(`stone-${stone.point}`);
+      if (anchor) this.stoneAnchors.set(stone.point as BodyPoint, anchor);
+    }
   }
 
   private mountUi(): void {
@@ -954,15 +963,21 @@ export class Chapter2 implements ChapterRunner {
 
     // Only the stone the player is being led to glows, and it breathes a
     // little. It is the whole of the guidance in that scene.
-    const next = this.body.next;
-    for (const stone of this.body.stones) {
-      const anchor = this.game.world.anchors.get(`stone-${stone.point}`);
-      if (!anchor) continue;
-      const lit = stone === next;
-      const breathe = this.settings.reducedMotion
-        ? 0.75
-        : 0.62 + Math.sin(this.game.time * 0.9) * 0.16;
-      setStoneGlow(anchor, lit ? breathe : 0);
+    const next = this.body.next?.point ?? null;
+    if (next !== this.litStone) {
+      // The lit stone only changes four times in the chapter, so the halos are
+      // switched when it does rather than looked up every frame.
+      for (const [point, anchor] of this.stoneAnchors) {
+        if (point !== next) setStoneGlow(anchor, 0);
+      }
+      this.litStone = next;
+    }
+    const anchor = next ? this.stoneAnchors.get(next) : undefined;
+    if (anchor) {
+      setStoneGlow(
+        anchor,
+        this.settings.reducedMotion ? 0.75 : 0.62 + Math.sin(this.game.time * 0.9) * 0.16,
+      );
     }
 
     // The two seeds, and the rainbow over the meadow where the rain let go.

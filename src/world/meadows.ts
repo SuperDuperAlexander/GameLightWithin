@@ -42,18 +42,40 @@ function softCap(value: number, ceiling: number): number {
   return ceiling * (1 - Math.exp(-value / ceiling));
 }
 
+/**
+ * Every place the ground is eased flat, with each centre's height worked out
+ * once at load.
+ *
+ * The height function is the hottest thing in the chapter: the ground check,
+ * the slope check and the collision slide all call it several times per step,
+ * and the terrain build calls it about thirty thousand times. Working out the
+ * centre height inside the loop meant three more noise evaluations for every
+ * point standing in a flattened area — which is every point the player is
+ * ever actually standing on, because that is where the scenes are.
+ */
+const FLAT_SPOTS: { x: number; z: number; radius: number; centre: number }[] = [
+  { x: LAYOUT2.playerStart.x, z: LAYOUT2.playerStart.z, radius: 9 },
+  { x: LAYOUT2.spring.x, z: LAYOUT2.spring.z, radius: 7 },
+  ...LAYOUT2.bodyStones.map((s) => ({ x: s.x, z: s.z, radius: 5 })),
+  { x: LAYOUT2.rain.x, z: LAYOUT2.rain.z, radius: 9 },
+  { x: LAYOUT2.singingStone.x, z: LAYOUT2.singingStone.z, radius: 6 },
+  { x: LAYOUT2.storm.x, z: LAYOUT2.storm.z, radius: 12 },
+  { x: LAYOUT2.seedA.x, z: LAYOUT2.seedA.z, radius: 8 },
+  { x: LAYOUT2.seedB.x, z: LAYOUT2.seedB.z, radius: 8 },
+  { x: LAYOUT2.lightWell.x, z: LAYOUT2.lightWell.z, radius: 6 },
+].map((spot) => ({ ...spot, centre: baseHeight(spot.x, spot.z) }));
+
+/** Eases the ground toward a spot's own height inside its radius. */
 function flattenAround(
   h: number,
   x: number,
   z: number,
-  cx: number,
-  cz: number,
-  radius: number,
+  spot: { x: number; z: number; radius: number; centre: number },
 ): number {
-  const d = Math.hypot(x - cx, z - cz);
-  const t = 1 - smoothstep(radius * 0.4, radius, d);
+  const d = Math.hypot(x - spot.x, z - spot.z);
+  const t = 1 - smoothstep(spot.radius * 0.4, spot.radius, d);
   if (t <= 0) return h;
-  return h * (1 - t) + baseHeight(cx, cz) * t;
+  return h * (1 - t) + spot.centre * t;
 }
 
 /** The rolling floor, before anything is flattened into it. */
@@ -86,17 +108,7 @@ function height(x: number, z: number): number {
   h += softCap(beyond * beyond * 0.02 + beyond * 0.34, 14);
 
   // Flat ground wherever the player has to stand still.
-  h = flattenAround(h, x, z, LAYOUT2.playerStart.x, LAYOUT2.playerStart.z, 9);
-  h = flattenAround(h, x, z, LAYOUT2.spring.x, LAYOUT2.spring.z, 7);
-  for (const stone of LAYOUT2.bodyStones) {
-    h = flattenAround(h, x, z, stone.x, stone.z, 5);
-  }
-  h = flattenAround(h, x, z, LAYOUT2.rain.x, LAYOUT2.rain.z, 9);
-  h = flattenAround(h, x, z, LAYOUT2.singingStone.x, LAYOUT2.singingStone.z, 6);
-  h = flattenAround(h, x, z, LAYOUT2.storm.x, LAYOUT2.storm.z, 12);
-  h = flattenAround(h, x, z, LAYOUT2.seedA.x, LAYOUT2.seedA.z, 8);
-  h = flattenAround(h, x, z, LAYOUT2.seedB.x, LAYOUT2.seedB.z, 8);
-  h = flattenAround(h, x, z, LAYOUT2.lightWell.x, LAYOUT2.lightWell.z, 6);
+  for (const spot of FLAT_SPOTS) h = flattenAround(h, x, z, spot);
   return h;
 }
 

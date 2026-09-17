@@ -114,12 +114,7 @@ export function terrainHeight(x: number, z: number): number {
   h += softCap(beyond * beyond * 0.018 + beyond * 0.3, 12);
 
   // The floor is flattened where the player has to stand still.
-  h = flattenAround(h, x, z, LAYOUT.spring1.x, LAYOUT.spring1.z, 7);
-  h = flattenAround(h, x, z, LAYOUT.spring2.x, LAYOUT.spring2.z, 8);
-  h = flattenAround(h, x, z, LAYOUT.spring3.x, LAYOUT.spring3.z, 7);
-  h = flattenAround(h, x, z, LAYOUT.fog.x, LAYOUT.fog.z, 9);
-  h = flattenAround(h, x, z, LAYOUT.seedSpot.x, LAYOUT.seedSpot.z, 8);
-  h = flattenAround(h, x, z, LAYOUT.playerStart.x, LAYOUT.playerStart.z, 8);
+  for (const spot of FLAT_SPOTS) h = flattenAround(h, x, z, spot);
   return h;
 }
 
@@ -128,20 +123,36 @@ function softCap(value: number, ceiling: number): number {
   return ceiling * (1 - Math.exp(-value / ceiling));
 }
 
-/** Eases the ground toward its centre height inside a radius. */
+/**
+ * Every place the ground is eased flat, with each centre's height worked out
+ * once at load rather than on every call.
+ *
+ * The height function is the hottest thing in the game: the ground check, the
+ * slope check and the collision slide all call it several times per step.
+ */
+const FLAT_SPOTS: { x: number; z: number; radius: number; centre: number }[] = [
+  { x: LAYOUT.spring1.x, z: LAYOUT.spring1.z, radius: 7 },
+  { x: LAYOUT.spring2.x, z: LAYOUT.spring2.z, radius: 8 },
+  { x: LAYOUT.spring3.x, z: LAYOUT.spring3.z, radius: 7 },
+  { x: LAYOUT.fog.x, z: LAYOUT.fog.z, radius: 9 },
+  { x: LAYOUT.seedSpot.x, z: LAYOUT.seedSpot.z, radius: 8 },
+  { x: LAYOUT.playerStart.x, z: LAYOUT.playerStart.z, radius: 8 },
+].map((spot) => ({
+  ...spot,
+  centre: fbm2d(spot.x * 0.028 + 40, spot.z * 0.028 + 40, 4, 7) * 2.6 - 1.3,
+}));
+
+/** Eases the ground toward a spot's own height inside its radius. */
 function flattenAround(
   h: number,
   x: number,
   z: number,
-  cx: number,
-  cz: number,
-  radius: number,
+  spot: { x: number; z: number; radius: number; centre: number },
 ): number {
-  const d = Math.hypot(x - cx, z - cz);
-  const t = 1 - smoothstep(radius * 0.4, radius, d);
+  const d = Math.hypot(x - spot.x, z - spot.z);
+  const t = 1 - smoothstep(spot.radius * 0.4, spot.radius, d);
   if (t <= 0) return h;
-  const centre = fbm2d(cx * 0.028 + 40, cz * 0.028 + 40, 4, 7) * 2.6 - 1.3;
-  return h * (1 - t) + centre * t;
+  return h * (1 - t) + spot.centre * t;
 }
 
 /** How far outside the soft border a point is, 0 inside, 1 fully outside. */
