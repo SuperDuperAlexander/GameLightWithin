@@ -176,9 +176,10 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
   await shot('c2-scene6-night');
   await until(page, (x) => x.globalColor >= 0.999, 'the meadows to turn to full colour');
   await until(page, (x) => x.phase === 'dream', 'the dream');
-  // The player lies down first, and the dream fades in over the top of that,
-  // so it is given time to arrive.
-  await page.waitForTimeout(5000);
+  // The player lies down first, and the dream fades in over the top of that.
+  // The wait also puts the bird over the village rather than off the edge:
+  // it makes its first crossing in the first four tenths of the dream.
+  await page.waitForTimeout(4200);
   await expect(page.locator('.lw-dream')).toBeVisible();
   await shot('c2-dream');
 

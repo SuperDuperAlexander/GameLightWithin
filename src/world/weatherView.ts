@@ -94,7 +94,7 @@ export class WeatherView {
           float pulse = 1.0 + uPulse * 0.22 * sin(uTime * 1.6);
           // Worry shimmers at a rate that stays under three a second.
           float flick = 1.0 + uFlicker * 0.14 * sin(uTime * 8.0 + vL.x * 3.0);
-          float a = (1.0 - soft) * mix(0.3, 0.42, 1.0 - uTone) * uDensity * drift;
+          float a = (1.0 - soft) * mix(0.4, 0.52, 1.0 - uTone) * uDensity * drift;
           vec3 col = mix(uColor, vec3(0.62, 0.66, 0.78), uLift) * (0.8 + 0.3 * facing);
           col *= pulse * flick * uTone;
           // The same aerial perspective the rest of the world has. Without it
@@ -102,7 +102,7 @@ export class WeatherView {
           // around it has hazed away, and it reads as a painted block.
           float haze = 1.0 - smoothstep(38.0, 185.0, vDepth);
           col = mix(vec3(0.72, 0.74, 0.78), col, haze);
-          gl_FragColor = vec4(col, clamp(a, 0.0, 0.55) * (0.25 + 0.75 * haze));
+          gl_FragColor = vec4(col, clamp(a, 0.0, 0.62) * (0.25 + 0.75 * haze));
         }
       `,
     });

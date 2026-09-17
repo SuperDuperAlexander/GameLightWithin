@@ -68,14 +68,17 @@ export class DreamView {
           y: String(y),
           width: String(w),
           height: String(h),
-          fill: '#0f1628',
+          // The walls are lighter than the hill behind them and the roof is
+          // darker than the walls, so the roof line reads against the sky
+          // instead of disappearing into it.
+          fill: '#26324f',
         }),
       );
       // A simple pitched roof over each one.
       svg.append(
         svgEl('path', {
           d: `M${String(x - 5)} ${String(y)} L${String(x + w / 2)} ${String(y - 15)} L${String(x + w + 5)} ${String(y)} Z`,
-          fill: '#0b101f',
+          fill: '#141c31',
         }),
       );
       // One lit window, the only warm thing in the picture.

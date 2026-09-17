@@ -39,8 +39,13 @@ export const CHAPTER2 = {
 export const WEATHER = {
   /** The weather chases at this share of the player's walking speed. */
   followSpeedFactor: 0.9,
-  /** How high above the ground the cloud sits. */
-  height: 4.2,
+  /**
+   * How high above the ground a weather sits.
+   *
+   * Low enough that a cloud following the player is in the picture with them
+   * and clearly raining on them, rather than a smudge above the top edge.
+   */
+  height: 3.2,
   /** How close the weather tries to stay when it follows. */
   followRadius: 1.2,
   /** Intensity can never leave this range. */

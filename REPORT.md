@@ -676,8 +676,10 @@ Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
 | No request to any outside origin, in every chapter 2 scene | passes |
 | All chapter 1 tests | pass |
 
-A full run of all 80 browser tests takes about an hour and a half here, and the
-software renderer slows from about four frames a second to well under one while
+**80 of 80 browser tests pass**, on desktop and on mobile, in one clean run
+that takes about an hour and a quarter on this machine.
+
+The software renderer slows from about four frames a second to well under one while
 it is busy. That made six control tests fail in a long run and pass on their
 own. They no longer read a speed off a stopwatch: a key is held until the player
 has actually moved, and the stride test measures the time to cover three metres
