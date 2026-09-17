@@ -75,7 +75,7 @@ export class PlayerFigure {
           }
         `,
         fragmentShader: /* glsl */ `
-          precision mediump float;
+          precision highp float;
           varying vec3 vNormalW;
           varying vec3 vViewDir;
           uniform vec3 uColor;
@@ -106,7 +106,7 @@ export class PlayerFigure {
         vertexShader:
           'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
         fragmentShader:
-          'precision mediump float; varying vec2 vUv; void main(){ float d = distance(vUv, vec2(0.5)) * 2.0; gl_FragColor = vec4(0.13, 0.14, 0.17, (1.0 - smoothstep(0.25, 1.0, d)) * 0.42); }',
+          'precision highp float; varying vec2 vUv; void main(){ float d = distance(vUv, vec2(0.5)) * 2.0; gl_FragColor = vec4(0.13, 0.14, 0.17, (1.0 - smoothstep(0.25, 1.0, d)) * 0.42); }',
       }),
     );
     this.shadow.rotation.x = -Math.PI / 2;

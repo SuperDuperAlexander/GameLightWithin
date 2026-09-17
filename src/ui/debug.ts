@@ -1,4 +1,5 @@
 import { t } from '../content/strings.en';
+import type { Diagnostics } from '../core/diagnostics';
 import type { LearningChecks } from '../core/save';
 import { el } from './dom';
 
@@ -13,6 +14,30 @@ export interface DebugInfo {
   checks: LearningChecks;
   /** One free line, for whatever the current chapter needs to watch. */
   extra?: string;
+  /** What this device's graphics really are. Read once, at the start. */
+  diagnostics?: Diagnostics;
+}
+
+/**
+ * What the device says about itself.
+ *
+ * These lines exist so a screenshot from a phone answers the question that
+ * cannot be answered from a desktop: what the graphics really are, whether
+ * the canvas and the picture are the same size, and what the driver refused.
+ */
+function diagnosticRows(d: Diagnostics | undefined): [string, string][] {
+  if (!d) return [];
+  return [
+    ['gpu', d.gpu],
+    ['webgl', String(d.webgl)],
+    ['highp frag', String(d.highpFragment)],
+    ['halfFloat', `${String(d.halfFloat)}/${String(d.halfFloatLinear)}`],
+    ['canvas css', d.cssSize],
+    ['canvas buffer', d.bufferSize],
+    ['pixelRatio', `${d.pixelRatio.toFixed(2)} of ${d.devicePixelRatio.toFixed(2)}`],
+    ['window', d.viewport],
+    ...d.shaderErrors.map((e, i): [string, string] => [`shader ${String(i + 1)}`, e]),
+  ];
 }
 
 /**
@@ -38,6 +63,9 @@ export class DebugPanel {
 
   update(info: DebugInfo): void {
     const rows: [string, string][] = [
+      // The device report comes first: on a phone the panel is clipped, and
+      // these are the lines somebody is reading it to find.
+      ...diagnosticRows(info.diagnostics),
       ['fps', String(info.fps)],
       ['tier', info.tier],
       ['scene', String(info.scene)],

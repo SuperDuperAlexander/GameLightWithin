@@ -134,7 +134,7 @@ export function buildGrass(count: number): THREE.Mesh {
       }
     `,
     fragmentShader: /* glsl */ `
-      precision mediump float;
+      precision highp float;
       varying vec2 vUv;
       varying vec3 vWorld;
       varying float vKind;

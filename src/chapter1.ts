@@ -580,6 +580,7 @@ export class Chapter1 {
       light: this.light.get(),
       scene: this.scene,
       fps: this.game.fps.value,
+      diagnostics: this.game.diagnostics ?? undefined,
       tier:
         this.game.qualityDrops > 0
           ? `${this.game.quality.tier} (-${String(this.game.qualityDrops)})`

@@ -121,7 +121,7 @@ export class SpringGlow {
           }
         `,
         fragmentShader: `
-          precision mediump float;
+          precision highp float;
           varying vec3 vN; varying vec3 vV;
           uniform vec3 uColor; uniform float uStrength;
           void main() {
@@ -185,7 +185,7 @@ export class FogVolume {
         }
       `,
       fragmentShader: `
-        precision mediump float;
+        precision highp float;
         varying vec3 vN; varying vec3 vV; varying vec3 vL;
         uniform vec3 uColor; uniform float uDensity; uniform float uTime;
         void main() {

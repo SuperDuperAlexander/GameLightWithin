@@ -36,7 +36,7 @@ export function buildSky(strokes: number): THREE.Mesh {
       }
     `,
     fragmentShader: /* glsl */ `
-      precision mediump float;
+      precision highp float;
       varying vec3 vDir;
       uniform float uGlobalColor;
       uniform float uTime;
@@ -104,16 +104,22 @@ export function buildSky(strokes: number): THREE.Mesh {
           float star = 0.0;
           if (pick > 0.86) {
             vec2 at = vec2(hash(cell + 3.1), hash(cell + 7.7));
-            float d = length(fract(sp * 2.2) - at);
-            star = smoothstep(0.09, 0.0, d) * (0.5 + hash(cell + 11.3));
+            // Not named d: the sun's d is still in scope, and a shadowed
+            // variable is the kind of thing a stricter driver refuses.
+            float inCell = length(fract(sp * 2.2) - at);
+            star = smoothstep(0.09, 0.0, inCell) * (0.5 + hash(cell + 11.3));
           }
           star *= smoothstep(0.05, 0.4, h);
           night += uStars * star * 1.5;
           // A moon, opposite where the sun went down.
           vec3 moonDir = normalize(vec3(-0.35, 0.5, 0.82));
-          float m = max(dot(vDir, moonDir), 0.0);
-          night += uStars * pow(m, 900.0) * 1.4;
-          night += uStars * pow(m, 20.0) * 0.05;
+          // The moon is a disc measured by angle, not a power falloff. A
+          // pow() with an exponent in the hundreds is at the mercy of the
+          // driver: some clamp it, some return inf, and an inf here turns the
+          // whole sky black. An angle and two smoothsteps cannot do that.
+          float ang = acos(clamp(dot(vDir, moonDir), -1.0, 1.0));
+          night += uStars * (1.0 - smoothstep(0.030, 0.038, ang)) * 1.4;
+          night += uStars * (1.0 - smoothstep(0.0, 0.45, ang)) * 0.05;
           sky = mix(sky, night, uNight);
         }
 

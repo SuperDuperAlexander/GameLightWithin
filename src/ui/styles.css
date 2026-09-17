@@ -352,13 +352,31 @@ input[type='range'] {
   box-shadow: 0 4px 14px rgba(40, 40, 48, 0.14);
 }
 
+/* The breath pair. One button per thumb, both at the same height: the
+   in-breath and the out-breath are two halves of one thing, and a control
+   that sits higher on one side than the other does not read that way. */
+.lw-touch-left,
 .lw-touch-right {
+  position: absolute;
+  bottom: calc(184px + var(--safe-b));
+}
+
+.lw-touch-left {
+  left: 20px;
+}
+
+.lw-touch-right {
+  right: 20px;
+}
+
+/* Push and plant, where the right thumb already is. */
+.lw-touch-actions {
   position: absolute;
   right: 20px;
   bottom: calc(26px + var(--safe-b));
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 14px;
 }
 
@@ -402,12 +420,6 @@ input[type='range'] {
   cursor: pointer;
 }
 
-.lw-touch-left {
-  position: absolute;
-  left: 20px;
-  bottom: calc(184px + var(--safe-b));
-}
-
 .lw-joystick {
   position: absolute;
   left: 22px;
@@ -443,8 +455,9 @@ body:not(.lw-touch) .lw-breath-btn {
   display: none;
 }
 
+/* With no touch there is no breath pair, so the actions keep the corner. */
 body:not(.lw-touch) .lw-touch-right {
-  bottom: calc(30px + var(--safe-b));
+  display: none;
 }
 
 .lw-key {
@@ -510,6 +523,12 @@ body.lw-touch .lw-key {
   padding: 10px 12px;
   border-radius: 10px;
   max-width: 260px;
+  /* It has to be readable on a phone without covering the game it is
+     reporting on, so it keeps to the top half. It stays untappable, so what
+     it cannot fit is clipped rather than scrolled: the lines that matter for
+     a device report are first in the list. */
+  max-height: 46vh;
+  overflow: hidden;
   z-index: 30;
 }
 
@@ -551,7 +570,8 @@ body.lw-touch .lw-key {
 @media (max-width: 460px) {
   .lw-debug {
     font-size: 10px;
-    max-width: 180px;
+    max-width: 62vw;
+    max-height: 44vh;
     padding: 7px 8px;
   }
   .lw-breath {
