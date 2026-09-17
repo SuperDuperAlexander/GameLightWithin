@@ -596,9 +596,15 @@ Dr. Rulin Xiu, the Apply card, and the end screen.
 
 ### C2-M7 Polish
 
-Sound: the sound breath tones, the singing stone hum, low thunder that is a
-rumble and never a crack, soft rain, the worry whisper, and a night cue. A
-"Soft storm sounds" setting drops thunder and the whisper to about a third.
+Sound: the sound breath tones and the singing stone's hum, and three
+continuous layers the player stands inside rather than hears as events — the
+weather they are in (soft rain low down, the storm's wind lower still, the
+worry whisper high), and at night a low pad with crickets over it. Thunder
+rolls every seven to sixteen seconds while the storm still stands and the
+player is close enough for it to be about them; it is a rumble that swells
+over most of a second and never a crack, because a sharp sound would make the
+storm a threat and the storm is a feeling. A "Soft storm sounds" setting drops
+the thunder and the storm's wind to about a third.
 
 Accessibility: the anger pulse is a colour pulse at 1.6 rad/s and the worry
 shimmer at 8 rad/s in the shader — both well under three flashes a second, and
@@ -803,16 +809,21 @@ it only cost a stalled test.
    mid-range laptop, 30 on a mid-range Android — has not been tested on real
    hardware for either chapter. This is the same problem chapter 1 ended with.
 
-2. **The meadows cost more than the valley.** The floor is about 1.6 times
-   wider, so the same grass budget spreads thinner. I bunched the grass cards
-   toward the middle of the floor so the density reads right where the player
-   walks, but the far edges of a wide meadow are sparser than the valley was.
-   On a real device this may want a higher card count for chapter 2.
+2. **The meadows cost more than the valley.** The floor is about half again
+   the area, so the same grass budget spreads thinner. Two things were done
+   about it: the cards are bunched toward the middle of the floor where the
+   player walks, and a place can now ask for its own grass density against the
+   tier's count. The meadows ask for 1.3. That takes back most of the
+   difference and leaves chapter 2 drawing about a third more grass than
+   chapter 1 on the same tier, which is a real cost on a real device. The
+   quality watchdog can still step it down.
 
 3. **A weather can sit between the player and the camera.** The rain cloud
-   follows and settles above the player, and on a low camera the puffs can pass
-   through the view. It is soft and semi-transparent so it reads as weather
-   rather than as a bug, but it has not been tuned.
+   follows and settles above the player, which sooner or later puts it between
+   them and the lens. It now thins out as it passes within a few metres of the
+   camera, the way real weather does when you walk into it, rather than being
+   moved somewhere it has no business being. It has not been tuned against a
+   player turning the camera hard while standing in it.
 
 4. **The storm is visible from the first scene.** From the start of the meadows
    you can see the dark bank on the ridge about ninety metres off. I think that
@@ -820,8 +831,9 @@ it only cost a stalled test.
    accident, and it puts anger in view before the player has met sadness.
 
 5. **The dream is not timed to the music.** It runs for a fixed thirteen
-   seconds and the bird crosses twice inside that. If the sound is muted, the
-   only thing that marks it as a dream is that it is flat and silent.
+   seconds and the bird crosses twice inside that. The night pad and the
+   crickets carry on underneath it, which is enough to make it feel like the
+   same night, but nothing in the sound marks the dream as a dream.
 
 ---
 

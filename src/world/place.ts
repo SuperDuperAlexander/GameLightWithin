@@ -38,6 +38,14 @@ export interface Place {
   readonly zStart: number;
   readonly zEnd: number;
   readonly halfWidthMax: number;
+  /**
+   * How much grass this place wants, against the tier's own count.
+   *
+   * A wider floor spreads the same number of cards thinner. The meadows are
+   * about half again the area of the valley, so they ask for more; the tier
+   * still decides the base number, and the watchdog can still step it down.
+   */
+  readonly grassDensity: number;
   buildTerrain(): TerrainResult;
   buildProps(treeBlobs: number): PropsResult;
   /**

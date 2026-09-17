@@ -30,6 +30,7 @@ export const valley: Place = {
   zStart: WORLD.lengthStart,
   zEnd: WORLD.lengthEnd,
   halfWidthMax: WORLD.halfWidth,
+  grassDensity: 1,
   buildTerrain(): TerrainResult {
     return buildTerrain();
   },

@@ -277,6 +277,7 @@ export const meadows: Place = {
   zStart: WORLD2.lengthStart,
   zEnd: WORLD2.lengthEnd,
   halfWidthMax: WORLD2.halfWidth,
+  grassDensity: WORLD2.grassDensity,
   buildTerrain,
   buildProps(treeBlobs: number): PropsResult {
     // The meadows are above the tree line in places, so there are fewer trees

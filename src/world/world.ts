@@ -250,7 +250,7 @@ export class World {
 
   /** Applies a quality tier to everything that can change during play. */
   applyQuality(quality: QualitySettings): void {
-    setGrassDensity(this.grass, quality.grassCards, quality.grassFade);
+    setGrassDensity(this.grass, quality.grassCards * this.place.grassDensity, quality.grassFade);
     this.setShadows(quality.shadowMap);
     // The specks are drawn from the front of the buffer, so a lower tier just
     // draws fewer of them.

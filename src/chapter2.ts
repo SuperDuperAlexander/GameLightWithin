@@ -12,6 +12,7 @@ import {
   SOUND_BREATH,
   SPRING2,
   STORM,
+  THUNDER,
   WEATHER,
   WORLD2,
 } from './content/chapter2';
@@ -137,6 +138,8 @@ export class Chapter2 implements ChapterRunner {
   /** Seconds the singing stone has been standing with the player. */
   private stoneNear = 0;
   private autoClock = 0;
+  /** Seconds until the next roll of thunder. */
+  private thunderClock: number = THUNDER.minSeconds;
   private breathsTotal = 0;
   private breathsCalm = 0;
   private hasBreathed = false;
@@ -730,7 +733,7 @@ export class Chapter2 implements ChapterRunner {
 
     this.updateHud(dt, p.x, p.z);
     this.updateSky();
-    this.updateAudio();
+    this.updateAudio(dt);
     this.debug?.update({
       calm: this.calm.get(),
       light: this.light.get(),
@@ -1018,7 +1021,7 @@ export class Chapter2 implements ChapterRunner {
     return null;
   }
 
-  private updateAudio(): void {
+  private updateAudio(dt: number): void {
     const p = this.game.world.playerPosition;
     const stormDist = this.storm.distanceTo(p.x, p.z);
     const cloudDist = this.cloud.distanceTo(p.x, p.z);
@@ -1033,6 +1036,32 @@ export class Chapter2 implements ChapterRunner {
       drone + (nearCloud ? 0.15 : 0),
       muffle,
     );
+
+    // The weather you are standing in is the one you hear. The storm wins when
+    // both are in reach, because it is the louder thing in the world.
+    const stormAmount = nearStorm
+      ? clamp01(1 - stormDist / (this.storm.radius * 2)) * this.storm.weather.intensity
+      : 0;
+    const rainAmount = nearCloud
+      ? clamp01(1 - cloudDist / (this.cloud.size * 2)) * this.cloud.intensity
+      : 0;
+    if (stormAmount > rainAmount) this.audio.setWeather('storm', stormAmount);
+    else if (rainAmount > 0.01) this.audio.setWeather('rain', rainAmount);
+    else this.audio.setWeather('none', 0);
+
+    // Thunder: a rumble now and then while the storm still stands, and only
+    // while the player is close enough for it to be about them.
+    if (stormAmount > THUNDER.nearAmount) {
+      this.thunderClock -= dt;
+      if (this.thunderClock <= 0) {
+        this.thunderClock = THUNDER.minSeconds + Math.random() * THUNDER.spreadSeconds;
+        this.bus.emit('cue', { id: 'thunder' });
+      }
+    } else {
+      this.thunderClock = THUNDER.minSeconds;
+    }
+
+    this.audio.setNightAmbience(this.night);
   }
 
   // ---------- tests ----------

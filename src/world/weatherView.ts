@@ -102,7 +102,12 @@ export class WeatherView {
           // around it has hazed away, and it reads as a painted block.
           float haze = 1.0 - smoothstep(38.0, 185.0, vDepth);
           col = mix(vec3(0.72, 0.74, 0.78), col, haze);
-          gl_FragColor = vec4(col, clamp(a, 0.0, 0.62) * (0.25 + 0.75 * haze));
+          // A cloud that follows the player settles above them, which puts it
+          // between them and the camera. Rather than move it somewhere it has
+          // no business being, it thins out as it passes the lens, the way
+          // real weather does when you walk into it.
+          float near = smoothstep(0.6, 4.5, vDepth);
+          gl_FragColor = vec4(col, clamp(a, 0.0, 0.62) * (0.25 + 0.75 * haze) * near);
         }
       `,
     });

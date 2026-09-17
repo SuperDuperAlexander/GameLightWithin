@@ -155,6 +155,14 @@ export const STORM = {
   startIntensity: 1,
 };
 
+export const THUNDER = {
+  /** The shortest and the longest wait between rolls of thunder, in seconds. */
+  minSeconds: 7,
+  spreadSeconds: 9,
+  /** How close the player must be for the thunder to be about them. */
+  nearAmount: 0.35,
+};
+
 export const SINGING_STONE = {
   /** How close the player must stand for the stone to answer. */
   radius: 5,
@@ -251,4 +259,13 @@ export const WORLD2 = {
   terrainSegments: 168,
   /** The sky runs one slow day in this many seconds of play. */
   daySeconds: 900,
+  /**
+   * How much grass the meadows want, against the tier's own count.
+   *
+   * The walkable floor here is about half again the area of the chapter 1
+   * valley, so the same number of cards reads thinner on the ground. This
+   * takes back most of the difference without taking all of it, and the
+   * quality watchdog can still step the whole thing down on a slow device.
+   */
+  grassDensity: 1.3,
 };
