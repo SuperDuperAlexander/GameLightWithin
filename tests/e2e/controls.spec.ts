@@ -13,12 +13,24 @@ import { call, snap, waitForSnap } from './helpers';
 test.describe('walking with the keyboard', () => {
   const TOLERANCE = 0.7;
 
-  /** Holds a key for a moment and reports how far the player moved. */
+  /**
+   * Holds a key until the player has really moved, and reports how far.
+   *
+   * It waits for movement rather than for a stopwatch. This machine renders in
+   * software and drops to well under one frame a second when it is busy, and a
+   * fixed two second press is then a single frame of movement or none at all —
+   * which is what made these tests fail in a long run and pass on their own.
+   */
   async function press(page: Page, key: string): Promise<{ dx: number; dz: number }> {
     const before = await snap(page);
     await page.keyboard.down(key);
-    // Long enough to be unambiguous even at a few frames a second.
-    await page.waitForTimeout(2000);
+    const deadline = Date.now() + 40_000;
+    for (;;) {
+      await page.waitForTimeout(300);
+      const now = await snap(page);
+      if (Math.hypot(now.px - before.px, now.pz - before.pz) > TOLERANCE * 1.5) break;
+      if (Date.now() > deadline) break;
+    }
     await page.keyboard.up(key);
     await page.waitForTimeout(400);
     const after = await snap(page);
@@ -26,6 +38,21 @@ test.describe('walking with the keyboard', () => {
     // eslint-disable-next-line no-console
     console.log(`MOVE ${key} dx=${moved.dx.toFixed(2)} dz=${moved.dz.toFixed(2)}`);
     return moved;
+  }
+
+  /** Waits for a value read from the snapshot, however slowly frames arrive. */
+  async function until(
+    page: Page,
+    check: (s: Awaited<ReturnType<typeof snap>>) => boolean,
+    label: string,
+    timeout = 40_000,
+  ): Promise<void> {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      if (check(await snap(page))) return;
+      if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
+      await page.waitForTimeout(300);
+    }
   }
 
   test.beforeEach(async ({ page }) => {
@@ -69,14 +96,12 @@ test.describe('walking with the keyboard', () => {
   });
 
   test('walking resets the breath in progress', async ({ page }) => {
-    // Each wait has to cover several frames, and a machine with no graphics
-    // card runs this at a couple of frames a second.
+    // Each step waits for the state to arrive rather than for a stopwatch, so
+    // a machine running at half a frame a second still gets there.
     await page.keyboard.down('Space');
-    await page.waitForTimeout(2000);
-    expect((await snap(page)).breathPhase).toBe('inhale');
+    await until(page, (s) => s.breathPhase === 'inhale', 'the in-breath to start');
     await page.keyboard.down('KeyW');
-    await page.waitForTimeout(2000);
-    expect((await snap(page)).breathPhase).toBe('idle');
+    await until(page, (s) => s.breathPhase === 'idle', 'walking to reset the breath');
     await page.keyboard.up('KeyW');
     await page.keyboard.up('Space');
   });
