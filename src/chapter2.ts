@@ -434,6 +434,9 @@ export class Chapter2 implements ChapterRunner {
     this.dreamTime = 0;
     this.hud.setVisible(false);
     this.game.setPaused(true);
+    // Nobody is walking anywhere now. Leaving a walk half finished would mean
+    // the player keeps travelling the moment anything unpauses the world.
+    this.game.autoWalk = null;
     // The player lies down first. The dream fades in over the top of it, so
     // the last thing seen of the meadow is them settling into the grass.
     this.lyingDown = 0;

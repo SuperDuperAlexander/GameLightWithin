@@ -382,6 +382,7 @@ export class Chapter1 {
     saveSave(this.save);
     this.phase = 'reflect';
     this.hud.setVisible(false);
+    this.game.autoWalk = null;
     this.panels.reflect(() => {
       this.phase = 'understand';
       this.panels.card(t().understand.card, () => {

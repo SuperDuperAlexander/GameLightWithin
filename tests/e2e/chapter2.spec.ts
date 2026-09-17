@@ -169,10 +169,11 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
   await until(page, (x) => x.night >= 1, 'night to fall');
   // The picture of scene 6 is the player standing under the tree they grew,
   // so it is taken there and not wherever they happened to be at nightfall.
+  // Standing here is already under the tree, close enough to give thanks, so
+  // there is no second walk: the chapter can finish while one is still running.
   await walk(page, LAYOUT2.seedB.x, LAYOUT2.seedB.z + 3);
   await page.waitForTimeout(2500);
   await shot('c2-scene6-night');
-  await walk(page, LAYOUT2.seedB.x, LAYOUT2.seedB.z);
   await until(page, (x) => x.globalColor >= 0.999, 'the meadows to turn to full colour');
   await until(page, (x) => x.phase === 'dream', 'the dream');
   // The player lies down first, and the dream fades in over the top of that,

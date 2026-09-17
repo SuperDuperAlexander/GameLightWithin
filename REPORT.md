@@ -676,6 +676,14 @@ Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
 | No request to any outside origin, in every chapter 2 scene | passes |
 | All chapter 1 tests | pass |
 
+A full run of all 80 browser tests takes about an hour and a half here, and the
+software renderer slows from about four frames a second to well under one while
+it is busy. That made six control tests fail in a long run and pass on their
+own. They no longer read a speed off a stopwatch: a key is held until the player
+has actually moved, and the stride test measures the time to cover three metres
+rather than the distance covered in two and a half seconds. A time to cover a
+distance means the same thing at any frame rate.
+
 ---
 
 ## C2.4 Bundle size and frame rate
@@ -732,6 +740,13 @@ again.
 out-breath at least as long as the target, exactly. Nobody lets go of a key on
 the exact frame, so almost no breath qualified and the storm could never be
 quietened. It now asks for 0.95 of the target, with a test for the near miss.
+
+**The chapter could finish while the player was still walking.** The auto-walk
+helper the browser tests steer with was left running when the chapter ended, so
+the walk never reported that it had arrived. A player would not have noticed,
+because the screen is on the learning cycle by then — but the moment anything
+unpaused the world they would have set off again. Both chapters now stop the
+walk when they stop playing.
 
 **Night fall stalled the renderer.** `setNight` re-filtered the sky into the
 environment map on every call, and night falls over eight seconds, so that was
