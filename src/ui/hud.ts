@@ -131,7 +131,11 @@ export class Hud {
       // joystick, the out-breath on the right: both halves are something you
       // press, and neither is something you sit on and watch.
       el('div', { class: 'lw-touch-left' }, this.breathInBtn),
-      el('div', { class: 'lw-touch-right' }, this.pushBtn, this.interactBtn, this.breathOutBtn),
+      el('div', { class: 'lw-touch-right' }, this.breathOutBtn),
+      // Push and plant sit where the right thumb rests. The breath pair sits
+      // above them, level with each other, so the two halves of one breath
+      // are the same gesture on either side.
+      el('div', { class: 'lw-touch-actions' }, this.pushBtn, this.interactBtn),
     );
     this.joystickZone = joystick;
   }

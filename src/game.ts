@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMERA, PLAYER, SCENE_STARTS, WORLD } from './content/chapter1';
+import { CAMERA, PLAYER, SCENE_STARTS } from './content/chapter1';
 import { FollowCamera } from './core/camera';
 import type { DebugFlags } from './core/debugFlags';
 import { EventBus } from './core/events';
@@ -13,6 +13,8 @@ import {
   settingsFor,
 } from './core/quality';
 import type { QualitySettings, QualityTier } from './core/quality';
+import { readDiagnostics, watchShaderErrors } from './core/diagnostics';
+import type { Diagnostics } from './core/diagnostics';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
 import { border } from './world/place';
@@ -77,6 +79,8 @@ export class Game {
     readonly root: HTMLElement,
     readonly flags: DebugFlags,
   ) {
+    // Before the renderer exists, so nothing the driver says is missed.
+    watchShaderErrors();
     this.canvas = document.createElement('canvas');
     this.canvas.id = 'scene';
     this.root.appendChild(this.canvas);
@@ -94,6 +98,9 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
+
+  /** What this device's graphics really are. Read once, after the first frame. */
+  diagnostics: Diagnostics | null = null;
 
   async start(): Promise<void> {
     const settings = loadSettings();
@@ -125,6 +132,9 @@ export class Game {
     this.running = true;
     this.last = performance.now();
     this.loop(this.last);
+    // Read after the first frame, so anything the driver refused while
+    // compiling has already been said.
+    this.diagnostics = readDiagnostics(this.renderer);
   }
 
   /** Swaps the quality tier at runtime. */
@@ -248,11 +258,15 @@ export class Game {
       mz /= len;
     }
 
-    // The border mist turns the player back gently. There are no invisible walls.
+    // The border mist turns the player back gently. There are no invisible
+    // walls. Which way "back" is belongs to the place: the chapter 1 valley
+    // runs down the middle, but the meadows path wanders, so pushing toward
+    // x = 0 there pushes across the floor instead of back onto it.
+    const here = this.world.place;
     this.borderPush = border(p.x, p.z);
     if (this.borderPush > 0.01) {
-      const inwardX = -Math.sign(p.x - 0) * 0.35;
-      const inwardZ = p.z > WORLD.lengthStart ? -1 : p.z < WORLD.lengthEnd ? 1 : 0;
+      const inwardX = -Math.sign(p.x - here.centerX(p.z)) * 0.35;
+      const inwardZ = p.z > here.zStart ? -1 : p.z < here.zEnd ? 1 : 0;
       mx += inwardX * this.borderPush * 1.6;
       mz += inwardZ * this.borderPush * 1.6;
     }

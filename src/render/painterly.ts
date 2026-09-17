@@ -95,7 +95,7 @@ const PaperShader = {
   },
   vertexShader: KuwaharaShader.vertexShader,
   fragmentShader: /* glsl */ `
-    precision mediump float;
+    precision highp float;
     varying vec2 vUv;
     uniform sampler2D tDiffuse;
     uniform float uTime;

@@ -101,6 +101,15 @@ export class InputState {
       const rect = joystickZone.getBoundingClientRect();
       this.joyBaseX = rect.left + rect.width / 2;
       this.joyBaseY = rect.top + rect.height / 2;
+      // Hold on to the finger. A thumb on a small pad slides off it almost at
+      // once, and without this the browser is free to hand the pointer to
+      // something else the moment it leaves — which reads as a joystick that
+      // lets go by itself.
+      try {
+        joystickZone.setPointerCapture(e.pointerId);
+      } catch {
+        // Some browsers refuse capture for a pointer that has already gone.
+      }
       this.updateJoystick(e.clientX, e.clientY);
       e.preventDefault();
     };
@@ -113,6 +122,11 @@ export class InputState {
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
     joystickZone.addEventListener('pointerdown', onJoyDown);
+    // With the pointer captured, its moves and its end are delivered to the
+    // pad rather than to the window, so the pad has to listen for them too.
+    joystickZone.addEventListener('pointermove', onPointerMove);
+    joystickZone.addEventListener('pointerup', onPointerUp);
+    joystickZone.addEventListener('pointercancel', onPointerUp);
 
     this.disposers.push(() => {
       target.removeEventListener('pointerdown', onPointerDown);
@@ -123,6 +137,9 @@ export class InputState {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
       joystickZone.removeEventListener('pointerdown', onJoyDown);
+      joystickZone.removeEventListener('pointermove', onPointerMove);
+      joystickZone.removeEventListener('pointerup', onPointerUp);
+      joystickZone.removeEventListener('pointercancel', onPointerUp);
     });
   }
 
