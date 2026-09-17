@@ -140,13 +140,12 @@ test('plays chapter 1 from start to end', async ({ page }, info) => {
   await shot('after3-apply');
   await page.getByRole('button', { name: 'Next' }).click();
 
-  await expect(page.getByText('Your answers stay on this device.')).toBeVisible();
-  await shot('after4-end-questions');
-  await answerQuestions(page, 4);
-
+  // The closing questions are asked once, after the last chapter in the build,
+  // so chapter 1 now goes straight to its end screen.
   await expect(page.getByText('Chapter 1 complete.')).toBeVisible();
-  await shot('after5-chapter-end');
-  await expect(page.getByRole('button', { name: /Chapter 2/ })).toBeDisabled();
+  await shot('after4-chapter-end');
+  // And the end screen offers the walk on into chapter 2.
+  await expect(page.locator('button[data-next-chapter="2"]')).toBeEnabled();
 
   expect(errors, `page errors: ${errors.join(' | ')}`).toEqual([]);
 });

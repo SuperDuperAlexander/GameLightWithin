@@ -50,6 +50,7 @@ import { ThanksSystem } from './systems/thanks';
 import { FeelingWeather, shuffledFeelings } from './systems/weather';
 import { GrownTree, MoteFlow, Sprout, SpringGlow, buildBird } from './world/effects';
 import { height as groundHeight } from './world/place';
+import { setStoneGlow } from './world/props2';
 import { Rainbow, ToneRings, WeatherView } from './world/weatherView';
 import { DebugPanel } from './ui/debug';
 import { DreamView } from './ui/dream';
@@ -937,6 +938,19 @@ export class Chapter2 implements ChapterRunner {
     }
     const wellOn = this.well.wouldGive(px, pz, this.light.get());
     this.wellGlow.setStrength(wellOn ? 1.1 : 0.4, wellOn ? 2.3 : 1.8);
+
+    // Only the stone the player is being led to glows, and it breathes a
+    // little. It is the whole of the guidance in that scene.
+    const next = this.body.next;
+    for (const stone of this.body.stones) {
+      const anchor = this.game.world.anchors.get(`stone-${stone.point}`);
+      if (!anchor) continue;
+      const lit = stone === next;
+      const breathe = this.settings.reducedMotion
+        ? 0.75
+        : 0.62 + Math.sin(this.game.time * 0.9) * 0.16;
+      setStoneGlow(anchor, lit ? breathe : 0);
+    }
 
     // The two seeds, and the rainbow over the meadow where the rain let go.
     this.sproutA.setState(this.seedA.state === 'growing', this.seedA.progress, this.seedA.paused);

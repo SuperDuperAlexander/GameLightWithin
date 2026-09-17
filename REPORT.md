@@ -152,8 +152,12 @@ All in `screenshots/`, one set per scene, desktop 1280 x 720 and mobile
 | Reflect reply       | `after1-reflect-reply-desktop.png` | `after1-reflect-reply-mobile.png` |
 | Understand          | `after2-understand-desktop.png`    | `after2-understand-mobile.png`    |
 | Apply               | `after3-apply-desktop.png`         | `after3-apply-mobile.png`         |
-| End questions       | `after4-end-questions-desktop.png` | `after4-end-questions-mobile.png` |
-| Chapter end         | `after5-chapter-end-desktop.png`   | `after5-chapter-end-mobile.png`   |
+| Chapter end         | `after4-chapter-end-desktop.png`   | `after4-chapter-end-mobile.png`   |
+
+*Updated for chapter 2:* the closing questions moved to the end of the last
+chapter in the build, so chapter 1 goes from Apply straight to its end screen,
+and that screen now offers the walk on into chapter 2. The old
+`after4-end-questions` and `after5-chapter-end` files are gone.
 
 The full play-through writes its own set as well, so there is a picture of every
 scene taken during a real, uninterrupted play: `scene0-start`, `scene0-questions`,

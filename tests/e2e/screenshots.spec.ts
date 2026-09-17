@@ -133,15 +133,11 @@ test.describe('scene screenshots', () => {
     await page.getByRole('button', { name: 'Next' }).click();
     await page.waitForTimeout(400);
     await page.screenshot({ path: `screenshots/after3-apply-${tag}.png` });
+    // The closing questions moved to the end of the last chapter in the build,
+    // so chapter 1 goes from Apply straight to its end screen.
     await page.getByRole('button', { name: 'Next' }).click();
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: `screenshots/after4-end-questions-${tag}.png` });
-    for (const group of ['receive', 'calm']) {
-      await page.locator(`[aria-label="${group}"] button[data-value="4"]`).click();
-    }
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: `screenshots/after5-chapter-end-${tag}.png` });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `screenshots/after4-chapter-end-${tag}.png` });
   });
 
   test('the pause screen and the seed choice', async ({ page }, info) => {

@@ -75,8 +75,42 @@ export function buildStandingStone(point: BodyPoint, seed: number): THREE.Group 
   symbol.scale.setScalar(1.25);
   group.add(symbol);
 
+  // A soft halo, off until this is the stone the player is being led to.
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 14, 12),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(PALETTE.receiveGold),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  glow.name = 'stoneGlow';
+  glow.position.y = height * 0.62;
+  glow.scale.setScalar(1.35);
+  glow.visible = false;
+  group.add(glow);
+
   group.rotation.z = (rng() - 0.5) * 0.09;
   return group;
+}
+
+/**
+ * Lights the halo on a body stone.
+ *
+ * Only the next stone in the order is ever lit, which is the whole of the
+ * guidance in that scene: no text, no marker, just the one stone that is
+ * waiting. `amount` is 0 to 1.
+ */
+export function setStoneGlow(stone: THREE.Object3D, amount: number): void {
+  const glow = stone.getObjectByName('stoneGlow') as THREE.Mesh | undefined;
+  if (!glow) return;
+  const a = Math.max(0, Math.min(1, amount));
+  glow.visible = a > 0.01;
+  const mat = glow.material as THREE.MeshBasicMaterial;
+  mat.opacity = a * 0.3;
+  glow.scale.setScalar(1.25 + a * 0.25);
 }
 
 /**
@@ -158,10 +192,7 @@ export function buildMountains(): THREE.Mesh {
   const rng = makeRng(31337);
   const positions: number[] = [];
   const colors: number[] = [];
-  const near = new THREE.Color(PALETTE.farHillsViolet).lerp(
-    new THREE.Color(PALETTE.skyGrey),
-    0.3,
-  );
+  const near = new THREE.Color(PALETTE.farHillsViolet).lerp(new THREE.Color(PALETTE.skyGrey), 0.3);
   const far = new THREE.Color(PALETTE.farHillsViolet).lerp(new THREE.Color(PALETTE.skyGrey), 0.72);
   const tmp = new THREE.Color();
 
