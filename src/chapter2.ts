@@ -132,6 +132,8 @@ export class Chapter2 implements ChapterRunner {
   /** 0 day, 1 night. Scene 6 turns it up. */
   private night = 0;
   private dreamTime = 0;
+  /** 0 standing, 1 lying in the grass. */
+  private lyingDown = 0;
   /** Seconds the singing stone has been standing with the player. */
   private stoneNear = 0;
   private autoClock = 0;
@@ -432,7 +434,10 @@ export class Chapter2 implements ChapterRunner {
     this.dreamTime = 0;
     this.hud.setVisible(false);
     this.game.setPaused(true);
-    this.dream.play();
+    // The player lies down first. The dream fades in over the top of it, so
+    // the last thing seen of the meadow is them settling into the grass.
+    this.lyingDown = 0;
+    window.setTimeout(() => this.dream.play(), NIGHT.lieDownSeconds * 1000);
   }
 
   private startLearningCycle(): void {
@@ -850,6 +855,8 @@ export class Chapter2 implements ChapterRunner {
   /** The short dream at the end: a village, and a bird crossing twice. */
   private updateDream(dt: number): void {
     this.dreamTime += dt;
+    this.lyingDown = clamp01(this.lyingDown + dt / NIGHT.lieDownSeconds);
+    this.game.world.player.setLyingDown(this.lyingDown);
     if (this.dreamTime >= NIGHT.dreamSeconds) {
       this.dream.stop();
       this.game.setDarken(0, dt);

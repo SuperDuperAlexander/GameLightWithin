@@ -175,8 +175,9 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
   await walk(page, LAYOUT2.seedB.x, LAYOUT2.seedB.z);
   await until(page, (x) => x.globalColor >= 0.999, 'the meadows to turn to full colour');
   await until(page, (x) => x.phase === 'dream', 'the dream');
-  // The dream fades in over about a second, so it is given time to arrive.
-  await page.waitForTimeout(2500);
+  // The player lies down first, and the dream fades in over the top of that,
+  // so it is given time to arrive.
+  await page.waitForTimeout(5000);
   await expect(page.locator('.lw-dream')).toBeVisible();
   await shot('c2-dream');
 

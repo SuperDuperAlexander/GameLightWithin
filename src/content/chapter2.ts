@@ -184,6 +184,8 @@ export const NIGHT = {
   radius: 4.5,
   /** How long the sky takes to turn. */
   fallSeconds: 8,
+  /** How long the player takes to lie down before the dream, in seconds. */
+  lieDownSeconds: 2,
   /** The dream, in seconds. */
   dreamSeconds: 13,
   colorSeconds: 6,

@@ -244,12 +244,36 @@ export class PlayerFigure {
     const roll = Math.sin(this.walkPhase) * 0.07 * this.gait;
     const lean = 0.1 * this.gait;
 
+    // Lying down overrides the walk: the figure tips back and settles.
+    if (this.lying > 0.001) {
+      const eased = this.lying * this.lying * (3 - 2 * this.lying);
+      this.body.position.y = -0.55 * eased;
+      this.body.rotation.z = 0;
+      this.body.rotation.x = -1.35 * eased;
+      this.hem.rotation.z = 0;
+      this.hem.position.x = 0;
+      return;
+    }
+
     this.body.position.y = bob;
     this.body.rotation.z = roll;
     this.body.rotation.x = lean;
     // The hem swings a beat behind the body, so the cloak has some weight.
     this.hem.rotation.z = -roll * 0.6;
     this.hem.position.x = Math.sin(this.walkPhase - 0.6) * 0.03 * this.gait;
+  }
+
+  /** 0 standing, 1 lying down. Chapter 2 uses it before the dream. */
+  private lying = 0;
+
+  /**
+   * Lies the player down, or stands them back up.
+   *
+   * `amount` is the whole state, not a step, so a chapter can ease it or set
+   * it straight and the result is the same.
+   */
+  setLyingDown(amount: number): void {
+    this.lying = clamp01(amount);
   }
 
   /** Where a light mote should fly to. */

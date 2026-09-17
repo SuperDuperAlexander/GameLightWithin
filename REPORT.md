@@ -582,8 +582,9 @@ a player who spends everything on a tree that fades can always try again.
 Night falls once a heart tree stands. Three calm breaths of thanks under it turn
 the meadows to full colour, moonlit.
 
-The dream is a flat silhouette overlay: a village on a hill under stars, one lit
-window per house, and one bird that crosses the same roof twice. There is no
+The player lies down in the grass, and the dream fades in over the top of them
+settling. The dream is a flat silhouette overlay: a village on a hill under
+stars, one lit window per house, and one bird that crosses the same roof twice. There is no
 text. It is drawn as an SVG overlay rather than in the world on purpose — a
 dream should not look like the place the player is standing in, and building a
 second village in three dimensions to show for thirteen seconds would cost more
@@ -619,7 +620,8 @@ or `-mobile`.
 | --- | --- |
 | 1 Over the bridge, the meadows | `c2-scene1-meadows-*.png` |
 | 2 The four body stones | `c2-scene2-body-stones-*.png` |
-| 3 The rain cloud | `c2-scene3-rain-*.png` |
+| 3 The rain cloud, with the naming panel | `c2-scene3-rain-*.png` |
+| 3 The rainbow, when the rain lets go | `c2-scene3-rainbow-*.png` |
 | 4a The singing stone | `c2-scene4a-singing-stone-*.png` |
 | 4 The storm ridge | `c2-scene4-storm-*.png` |
 | 5 Two seeds | `c2-scene5-seeds-*.png` |
@@ -628,127 +630,6 @@ or `-mobile`.
 | The end screen | `c2-end-*.png` |
 
 ---
-
-## C2.5 Where I changed the brief, and why
-
-1. **The chapter hand-over reloads the page.** The brief says "the screen fades,
-   and chapter 2 loads". It fades, and then the page reloads at `?chapter=2`.
-   A chapter owns a whole world — terrain, materials, shaders, an environment
-   map — and tearing one down in place to build another is a long tail of leaks
-   and half-disposed state. The build is about 1 MB and served locally, so the
-   reload costs less than that risk. The player sees a fade either way.
-
-2. **Chapter 2 does not start grey.** The brief does not say either way. Chapter
-   1 starts in full grey because learning to receive is what brings the colour
-   back; arriving somewhere grey again would undo that. The meadows start at
-   0.55 colour and this chapter's moments lift them the rest of the way.
-
-3. **Sadness does not answer to a sound breath.** The brief says a tone reduces
-   "nearby anger or worry", which I read as deliberate, and I built it that way
-   and wrote a test for it. Saying it plainly because it is a content decision:
-   sadness is not a thing to be quietened, only felt through.
-
-4. **The dream is a flat overlay, not a place.** The brief asks for a short
-   dream of a village where the same bird crosses the same roof twice. It is an
-   SVG silhouette over the darkened game rather than a second world. A dream
-   should not look like the place the player is standing in.
-
-5. **The naming panel needs one calm breath, not a count of them.** The brief
-   says "has completed 1 calm breath", which I took to mean at any point in the
-   chapter rather than at that weather. Requiring a breath at the weather as
-   well as three seconds of standing still would be asking twice, which the
-   accessibility rules forbid.
-
-6. **The light well is in scene 5 only in the sense of where it stands.** Like
-   every other mechanic in both chapters, it runs every frame wherever the
-   player is. A player who wanders back to it from scene 6 still gets light.
-
----
-
-## C2.6 Known problems, worst first
-
-1. **The frame rate targets are still unverified.** This machine renders with
-   SwiftShader; there is no GPU. Measured frame rates here are 2 to 5 fps and
-   say nothing about a real device. The budget in `CLAUDE.md` — 60 fps on a
-   mid-range laptop, 30 on a mid-range Android — has not been tested on real
-   hardware for either chapter. This is the same problem chapter 1 ended with.
-
-2. **The meadows cost more than the valley.** The floor is about 1.6 times
-   wider, so the same grass budget spreads thinner. I bunched the grass cards
-   toward the middle of the floor so the density reads right where the player
-   walks, but the far edges of a wide meadow are sparser than the valley was.
-   On a real device this may want a higher card count for chapter 2.
-
-3. **A weather can sit between the player and the camera.** The rain cloud
-   follows and settles above the player, and on a low camera the puffs can pass
-   through the view. It is soft and semi-transparent so it reads as weather
-   rather than as a bug, but it has not been tuned.
-
-4. **The storm is visible from the first scene.** From the start of the meadows
-   you can see the dark bank on the ridge about ninety metres off. I think that
-   is right — you should see what is coming — but it is a choice, not an
-   accident, and it puts anger in view before the player has met sadness.
-
-5. **The dream is not timed to the music.** It runs for a fixed thirteen
-   seconds and the bird crosses twice inside that. If the sound is muted, the
-   only thing that marks it as a dream is that it is flat and silent.
-
----
-
-## C2.7 Open questions
-
-1. **How long should the meadows take?** The brief says 12 to 18 minutes. An
-   automatic run with the easy rhythm is well under that because it never
-   stops to look at anything. I have not timed a real, human walk. Do you want
-   me to add distance between the scenes, or leave the pacing to the player?
-
-2. **Should the mind tree be planted twice?** Right now there are two spots and
-   nothing stops a player planting a mind seed at both and running out of
-   light — the light well covers it, but the lesson lands harder if the second
-   seed is the one they get right. Do you want the second spot to be easier?
-
-3. **Naming a weather that is not there.** The panel opens for whichever
-   weather the player is standing with. If both the cloud and the storm are in
-   reach, the cloud wins because the storm needs its thought shown first. Is
-   that the order you want, or should the nearer one always win?
-
-4. **The pause text.** Chapter 2's pause says "Take all the time you need. It
-   is okay to stop here." Chapter 1's still says what it said. Should chapter 1
-   get the softer wording too, now that both exist?
-
-5. **Chapter 3.** The registry has a slot for it with a lower breath-circle
-   strength already set. Do you want to write its brief next, or play these two
-   first?
-
----
-
-## C2.8 What the first automatic run found
-
-Two real faults, both found by running the game rather than by reading it.
-
-**The light well made the seeds impossible.** The brief says the well sits
-between the two seed spots. I put it there: spot A at 11 m, spot B at 12 m. A
-seed only grows while the player is outside its 15 m away radius, so standing
-at the well — the one place a player short of light has to stand — stopped both
-seeds from growing. The run timed out with a mind seed stuck at "growing" and 39
-calm breaths taken. The spots are now about 20 m from the well and 40 m from
-each other, and the layout file says why in a comment so nobody closes the gap
-again.
-
-**No breath was ever long enough to sing.** The sound breath asked for an
-out-breath at least as long as the target, exactly. Nobody lets go of a key on
-the exact frame, so almost no breath qualified and the storm could never be
-quietened. It now asks for 0.95 of the target, with a test for the near miss.
-
-**Night fall stalled the renderer.** `setNight` re-filtered the sky into the
-environment map on every call, and night falls over eight seconds, so that was
-one full PMREM pass per frame. The frame rate went to zero and night stopped at
-0.66. It now refreshes in steps of 0.12, the same way the colour drift does.
-This would have been much worse on a real device than it was here, because here
-it only cost a stalled test.
-
----
-
 ## C2.3 Test results
 
 ### Unit tests, Vitest
@@ -795,6 +676,10 @@ Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
 | No request to any outside origin, in every chapter 2 scene | passes |
 | All chapter 1 tests | pass |
 
+---
+
+## C2.4 Bundle size and frame rate
+
 ### Bundle size
 
 | File | Bytes | Gzipped |
@@ -807,6 +692,146 @@ Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
 The budget is 6 MB for the first download and 15 MB in total. Chapter 2 added
 about 51 kB of JavaScript and no assets at all, because the meadows, the
 weather, the stones and the dream are all made in code.
+
+### Frame rate
+
+**Still unverified, and it is the first problem in the list below.** This
+machine has no GPU; it renders with SwiftShader, in software. Chapter 2
+measures 2 to 5 fps here, the same range chapter 1 measured, which tells you
+the two chapters cost about the same and nothing at all about a real device.
+
+What is known about the cost rather than measured:
+
+- The meadows draw the same grass, the same particles and the same one shadow
+  map as the valley, and the terrain has the same segment count.
+- The two extra draw calls are the mountain band (one mesh, no lighting, no
+  fog) and whichever weather is on screen: about twenty soft spheres sharing
+  one material, plus 240 rain points.
+- The one thing that really was expensive was found and fixed: night was
+  re-filtering the sky into the environment map once per frame. See C2.5.
+
+The quality tiers, the start probe and the watchdog work exactly as they do in
+chapter 1, because they belong to the game and not to a chapter.
+
+---
+
+## C2.5 What the first automatic run found
+
+Two real faults, both found by running the game rather than by reading it.
+
+**The light well made the seeds impossible.** The brief says the well sits
+between the two seed spots. I put it there: spot A at 11 m, spot B at 12 m. A
+seed only grows while the player is outside its 15 m away radius, so standing
+at the well — the one place a player short of light has to stand — stopped both
+seeds from growing. The run timed out with a mind seed stuck at "growing" and 39
+calm breaths taken. The spots are now about 20 m from the well and 40 m from
+each other, and the layout file says why in a comment so nobody closes the gap
+again.
+
+**No breath was ever long enough to sing.** The sound breath asked for an
+out-breath at least as long as the target, exactly. Nobody lets go of a key on
+the exact frame, so almost no breath qualified and the storm could never be
+quietened. It now asks for 0.95 of the target, with a test for the near miss.
+
+**Night fall stalled the renderer.** `setNight` re-filtered the sky into the
+environment map on every call, and night falls over eight seconds, so that was
+one full PMREM pass per frame. The frame rate went to zero and night stopped at
+0.66. It now refreshes in steps of 0.12, the same way the colour drift does.
+This would have been much worse on a real device than it was here, because here
+it only cost a stalled test.
+
+---
+
+## C2.6 Where I changed the brief, and why
+
+1. **The chapter hand-over reloads the page.** The brief says "the screen fades,
+   and chapter 2 loads". It fades, and then the page reloads at `?chapter=2`.
+   A chapter owns a whole world — terrain, materials, shaders, an environment
+   map — and tearing one down in place to build another is a long tail of leaks
+   and half-disposed state. The build is about 1 MB and served locally, so the
+   reload costs less than that risk. The player sees a fade either way.
+
+2. **Chapter 2 does not start grey.** The brief does not say either way. Chapter
+   1 starts in full grey because learning to receive is what brings the colour
+   back; arriving somewhere grey again would undo that. The meadows start at
+   0.55 colour and this chapter's moments lift them the rest of the way.
+
+3. **Sadness does not answer to a sound breath.** The brief says a tone reduces
+   "nearby anger or worry", which I read as deliberate, and I built it that way
+   and wrote a test for it. Saying it plainly because it is a content decision:
+   sadness is not a thing to be quietened, only felt through.
+
+4. **The dream is a flat overlay, not a place.** The brief asks for a short
+   dream of a village where the same bird crosses the same roof twice. It is an
+   SVG silhouette over the darkened game rather than a second world. A dream
+   should not look like the place the player is standing in.
+
+5. **The naming panel needs one calm breath, not a count of them.** The brief
+   says "has completed 1 calm breath", which I took to mean at any point in the
+   chapter rather than at that weather. Requiring a breath at the weather as
+   well as three seconds of standing still would be asking twice, which the
+   accessibility rules forbid.
+
+6. **The light well is in scene 5 only in the sense of where it stands.** Like
+   every other mechanic in both chapters, it runs every frame wherever the
+   player is. A player who wanders back to it from scene 6 still gets light.
+
+---
+
+## C2.7 Known problems, worst first
+
+1. **The frame rate targets are still unverified.** This machine renders with
+   SwiftShader; there is no GPU. Measured frame rates here are 2 to 5 fps and
+   say nothing about a real device. The budget in `CLAUDE.md` — 60 fps on a
+   mid-range laptop, 30 on a mid-range Android — has not been tested on real
+   hardware for either chapter. This is the same problem chapter 1 ended with.
+
+2. **The meadows cost more than the valley.** The floor is about 1.6 times
+   wider, so the same grass budget spreads thinner. I bunched the grass cards
+   toward the middle of the floor so the density reads right where the player
+   walks, but the far edges of a wide meadow are sparser than the valley was.
+   On a real device this may want a higher card count for chapter 2.
+
+3. **A weather can sit between the player and the camera.** The rain cloud
+   follows and settles above the player, and on a low camera the puffs can pass
+   through the view. It is soft and semi-transparent so it reads as weather
+   rather than as a bug, but it has not been tuned.
+
+4. **The storm is visible from the first scene.** From the start of the meadows
+   you can see the dark bank on the ridge about ninety metres off. I think that
+   is right — you should see what is coming — but it is a choice, not an
+   accident, and it puts anger in view before the player has met sadness.
+
+5. **The dream is not timed to the music.** It runs for a fixed thirteen
+   seconds and the bird crosses twice inside that. If the sound is muted, the
+   only thing that marks it as a dream is that it is flat and silent.
+
+---
+
+## C2.8 Open questions
+
+1. **How long should the meadows take?** The brief says 12 to 18 minutes. An
+   automatic run with the easy rhythm is well under that because it never
+   stops to look at anything. I have not timed a real, human walk. Do you want
+   me to add distance between the scenes, or leave the pacing to the player?
+
+2. **Should the mind tree be planted twice?** Right now there are two spots and
+   nothing stops a player planting a mind seed at both and running out of
+   light — the light well covers it, but the lesson lands harder if the second
+   seed is the one they get right. Do you want the second spot to be easier?
+
+3. **Naming a weather that is not there.** The panel opens for whichever
+   weather the player is standing with. If both the cloud and the storm are in
+   reach, the cloud wins because the storm needs its thought shown first. Is
+   that the order you want, or should the nearer one always win?
+
+4. **The pause text.** Chapter 2's pause says "Take all the time you need. It
+   is okay to stop here." Chapter 1's still says what it said. Should chapter 1
+   get the softer wording too, now that both exist?
+
+5. **Chapter 3.** The registry has a slot for it with a lower breath-circle
+   strength already set. Do you want to write its brief next, or play these two
+   first?
 
 ---
 
