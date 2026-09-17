@@ -193,6 +193,8 @@ test('plays chapter 2 from the meadows to the end', async ({ page }, info) => {
   await expect(page.getByText('Two questions')).toBeVisible({ timeout: 40_000 });
   await answerQuestions(page, 4);
   await expect(page.getByText('Chapter 2 complete.')).toBeVisible({ timeout: 40_000 });
+  // The end screen names the chapter that is coming, not the one just played.
+  await expect(page.getByRole('button', { name: /Chapter 3/ })).toBeDisabled();
   await shot('c2-end');
 
   expect(errors).toEqual([]);

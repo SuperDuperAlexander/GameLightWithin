@@ -187,10 +187,10 @@ export class Chapter2 implements ChapterRunner {
       x: LAYOUT2.rain.x,
       z: LAYOUT2.rain.z,
       intensity: RAIN.startIntensity,
-      size: 4.5,
+      size: RAIN.cloudSize,
       followsPlayer: true,
     });
-    this.cloudView = new WeatherView('sadness', 4.5);
+    this.cloudView = new WeatherView('sadness', RAIN.cloudSize);
     this.stormView = new WeatherView('anger', LAYOUT2.storm.radius);
 
     this.hud = new Hud(
@@ -485,6 +485,7 @@ export class Chapter2 implements ChapterRunner {
     this.phase = 'end';
     this.panels.chapterEnd({
       heading: t().end.heading2,
+      current: this.chapterId,
       next: nextChapter(this.chapterId),
       onAgain: () => window.location.reload(),
       onStart: () => {
@@ -1012,7 +1013,7 @@ export class Chapter2 implements ChapterRunner {
   private updateWeatherViews(): void {
     const cloudY = groundHeight(this.cloud.x, this.cloud.z) + WEATHER.height;
     this.cloudView.group.position.set(this.cloud.x, cloudY, this.cloud.z);
-    this.cloudView.setSize(this.cloud.size / 4.5);
+    this.cloudView.setSize(this.cloud.size / RAIN.cloudSize);
     this.cloudView.setIntensity(
       this.cloud.dissolving
         ? Math.max(0, 1 - this.cloud.dissolveTime / WEATHER.dissolveSeconds) * this.cloud.intensity

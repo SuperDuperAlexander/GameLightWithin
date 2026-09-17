@@ -507,6 +507,9 @@ export class Panels {
    */
   chapterEnd(options: {
     heading: string;
+    /** The chapter just finished, so the screen can name the one after it. */
+    current: ChapterId;
+    /** The next chapter, when it is built. Null means it is not, yet. */
     next: ChapterId | null;
     onAgain: () => void;
     onStart: () => void;
@@ -520,12 +523,19 @@ export class Panels {
       button(s.end.toStart, 'lw-btn lw-btn--quiet', this.tap(options.onStart)),
     );
     if (options.next === null) {
+      // Name the chapter that is coming, not a fixed one. Chapter 2's end
+      // screen used to offer "Chapter 2, coming soon", which is the chapter
+      // the player had just finished.
+      const after = CHAPTER_IDS.find((id) => id > options.current);
       const soon = el('button', {
         class: 'lw-btn lw-btn--quiet lw-btn--stack',
         type: 'button',
         disabled: 'true',
       });
-      soon.append(s.end.nextChapter, el('small', {}, s.end.comingSoon));
+      soon.append(
+        after ? `${String(after)}. ${s.chapters[CHAPTERS[after].titleKey]}` : s.end.nextChapter,
+        el('small', {}, s.end.comingSoon),
+      );
       row.append(soon);
     } else {
       const go = el('button', {

@@ -412,6 +412,7 @@ export class Chapter1 {
     this.phase = 'end';
     this.panels.chapterEnd({
       heading: t().end.heading,
+      current: this.chapterId,
       next: nextChapter(this.chapterId),
       onAgain: () => window.location.reload(),
       onStart: () => {

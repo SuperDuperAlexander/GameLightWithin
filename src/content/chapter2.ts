@@ -127,6 +127,14 @@ export const RAIN = {
   /** Where the cloud first appears, relative to the player. */
   spawnAhead: 10,
   startIntensity: 0.8,
+  /**
+   * How wide the cloud is.
+   *
+   * It follows the player and settles above them, so its size is how much of
+   * their view it takes. Big enough to be unmistakably over them and raining
+   * on them; not so big that they cannot see where they are walking.
+   */
+  cloudSize: 3.4,
   /** How long the rainbow stays. */
   rainbowSeconds: 6,
 };
