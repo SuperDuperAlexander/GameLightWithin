@@ -20,6 +20,7 @@ test('the start screen lists the chapters and locks the ones not reached', async
 
 /** A finished chapter 1 opens chapter 2 on the start screen. */
 test('finishing chapter 1 unlocks chapter 2', async ({ page }) => {
+  test.setTimeout(300_000);
   await page.addInitScript(() => {
     localStorage.setItem(
       'lightwithin.save.v1',
@@ -38,9 +39,13 @@ test('finishing chapter 1 unlocks chapter 2', async ({ page }) => {
   const two = page.locator('button[data-chapter="2"]');
   await expect(two).toBeEnabled();
   await two.click();
-  // Opening chapter 2 reloads the page at the chapter 2 address.
-  await page.waitForURL(/chapter=2/, { timeout: 20_000 });
-  await page.waitForFunction(() => document.body.dataset.ready === '1');
+  // Opening chapter 2 reloads the page at the chapter 2 address. The fade
+  // runs first, and then a whole world is built again, which on a machine
+  // with no graphics card is measured in tens of seconds, not milliseconds.
+  await page.waitForURL(/chapter=2/, { timeout: 120_000 });
+  await page.waitForFunction(() => document.body.dataset.ready === '1', undefined, {
+    timeout: 120_000,
+  });
   await expect(page.locator('button[data-chapter="2"]')).toBeVisible();
 });
 
