@@ -142,6 +142,30 @@ whatever anyone believes.
 
 - `?debug=1` debug panel, `?scene=N` jump to a scene, `?autobreathe=1` automatic
   calm breathing for Playwright, `?nopaint=1` turn the painting filter off.
+- `?chapter=N` open a chapter, `?autoname=1` answer the naming panel,
+  `?calm=0.2` force the calm value.
+- `?safe=1` draw the scene straight to the canvas, with no post-processing.
+  It is a way out and a way to find out: a device that is black through the
+  composer and right in safe mode has a problem with the render targets, and
+  one that is black either way has a problem with the world's own shaders.
+- The debug panel opens with a device report: the GPU as the driver names it,
+  the WebGL version, whether fragment shaders really have high precision,
+  whether half-float buffers work, the canvas size against the pixels drawn,
+  and anything the driver said while compiling a shader. A phone cannot be
+  reasoned about from here; it has to be asked.
+
+## Shaders
+
+- Every custom shader declares `precision highp float;` in **both** stages.
+  A desktop driver and a software renderer both treat `mediump` as full
+  precision, so a shader a mobile GPU cannot run compiles and looks right
+  here. At `mediump` a float holds about three digits and tops out near
+  65504, which the usual noise idiom (`fract(sin(dot(p, k)) * 43758.5453)`)
+  goes straight through.
+- No `pow()` with an exponent in the hundreds. Drivers disagree about it and
+  one `inf` in a colour turns the whole surface black. Use an angle and a
+  `smoothstep` instead.
+- No variable in an inner scope with the same name as one outside it.
 
 ## Commands
 

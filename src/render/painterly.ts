@@ -158,14 +158,44 @@ export class PainterlyRenderer {
   private width = 1;
   private height = 1;
 
+  /**
+   * Safe mode: the scene straight to the canvas, with no post-processing at
+   * all.
+   *
+   * It is a way out and a way to find out. A device that shows a black screen
+   * through the composer and a correct one in safe mode has a problem with
+   * the render targets or the passes; one that is black either way has a
+   * problem with the world's own shaders. Either answer takes one tap on a
+   * phone, which is worth more than any amount of guessing from here.
+   */
+  private readonly safeMode: boolean;
+  private scene: THREE.Scene;
+  private camera: THREE.Camera;
+
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
     camera: THREE.Camera,
     enabled: boolean,
+    safeMode = false,
   ) {
+    this.scene = scene;
+    this.camera = camera;
+    this.safeMode = safeMode;
+    if (safeMode) {
+      // The paper pass is what normally does the tone mapping and the move
+      // into sRGB. Without it the renderer has to do both itself, or the
+      // picture comes out dark and flat rather than merely unpainted.
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+    }
     this.composer = new EffectComposer(renderer);
-    this.composer.addPass(new RenderPass(scene, camera));
+    const render = new RenderPass(scene, camera);
+    // A sky that fails to draw should leave a pale sky, not a black one.
+    render.clearColor = new THREE.Color(0xcfd2d6);
+    render.clearAlpha = 1;
+    this.composer.addPass(render);
 
     this.kuwahara = new ShaderPass(KuwaharaShader);
     this.kuwahara.enabled = enabled;
@@ -177,6 +207,7 @@ export class PainterlyRenderer {
   }
 
   setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
     const pass = this.composer.passes[0];
     if (pass instanceof RenderPass) pass.camera = camera;
   }
@@ -215,6 +246,11 @@ export class PainterlyRenderer {
   }
 
   render(dt: number, time: number): void {
+    if (this.safeMode) {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     const t = this.paper.uniforms.uTime;
     if (t) t.value = time;
     this.composer.render(dt);

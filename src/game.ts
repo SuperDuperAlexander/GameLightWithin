@@ -119,6 +119,7 @@ export class Game {
       this.world.scene,
       this.camera.camera,
       !this.flags.noPaint,
+      this.flags.safe,
     );
     this.painter.applyQuality(this.quality);
 
