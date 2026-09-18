@@ -879,6 +879,78 @@ it only cost a stalled test.
    first?
 
 ---
+---
+
+# Mobile
+
+A note on what a real phone found, and what I could not find from here.
+
+## What was wrong
+
+The game rendered a **black sky** on an Android phone while looking correct on
+every machine I can test on. The cause is worth writing down because it will
+happen again:
+
+**A desktop driver and a software renderer both treat `mediump` as full
+precision.** A shader a mobile GPU cannot run therefore compiles and looks
+right here. Five of the game's fragment shaders were on `mediump`, including
+the sky, the final paper pass and the grass. At `mediump` a float holds about
+three digits and tops out near 65504, and those shaders carry the usual noise
+idiom, `fract(sin(dot(p, k)) * 43758.5453)`. The maths does not degrade there;
+it collapses.
+
+The moon made it certain: it was drawn with `pow(m, 900.0)`. An exponent in
+the hundreds is at the mercy of the driver — some clamp it, some return `inf`
+— and one `inf` in the sky colour turns the whole dome black. The sky dome
+covers everything above the horizon, which is what the phone showed.
+
+Every custom shader now declares `precision highp float;` in both stages, the
+moon is an angle and two smoothsteps, and `CLAUDE.md` carries the rule so the
+next shader starts right.
+
+## What else the phone showed
+
+- **The two breath buttons were not level.** The in-breath sat above the
+  joystick on the left; the out-breath sat in the bottom-right corner, about
+  160 px lower. They are two halves of one breath. They are level now, one per
+  thumb, with push and plant where the right thumb already rests.
+- **The joystick let go of the finger.** A thumb slides off a small pad almost
+  at once, and without pointer capture the browser is free to hand the pointer
+  elsewhere when it leaves.
+- **The border pushed the wrong way in the meadows.** It read chapter 1's
+  world bounds and pushed toward x = 0. The chapter 1 valley runs down the
+  middle so that worked by accident; the meadows path wanders up to twelve
+  metres off centre.
+
+## How to find out next time
+
+Two things exist now because none of this can be reproduced from here.
+
+**`?debug=1` opens with a device report.** The GPU as the driver names it, the
+WebGL version, whether fragment shaders really have high precision, whether
+half-float buffers can be rendered and filtered, the canvas size against the
+pixels actually drawn, and anything the driver said while compiling a shader.
+It is first in the panel and the panel is clipped to fit a phone, so one
+screenshot from the device answers the question.
+
+**`?safe=1` draws the scene straight to the canvas**, with no post-processing
+at all; the renderer does the tone mapping and the move into sRGB that the
+paper pass normally does. It is a way out and a way to find out: a device that
+is black through the composer and right in safe mode has a problem with the
+render targets, and one that is black either way has a problem with the
+world's own shaders. Either answer takes one tap. A browser test holds it on
+both projects, reading the picture back from a page screenshot — reading the
+canvas directly gives nothing back, because it has no `preserveDrawingBuffer`,
+so a test written that way passes on an empty image.
+
+## What is still unknown
+
+Whether the phone is fixed. The precision faults were real and are repaired,
+but they were found by reading, not by reproducing, and this machine has no
+GPU to reproduce them on. The device report and safe mode are there so the
+next round is measurement rather than argument.
+
+---
 
 ## How to run it
 

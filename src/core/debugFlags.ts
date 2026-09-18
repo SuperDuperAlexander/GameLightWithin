@@ -19,6 +19,15 @@ export interface DebugFlags {
   readonly autoName: boolean;
   /** `?calm=0.2` forces the calm value, for testing mind seeds. */
   readonly calm: number | null;
+  /**
+   * `?safe=1` draws the scene straight to the canvas, with no post-processing.
+   *
+   * A device that is black through the composer and correct in safe mode has
+   * a problem with the render targets; one that is black either way has a
+   * problem with the world's own shaders. It is also simply a way to play on
+   * a device the painted look does not suit.
+   */
+  readonly safe: boolean;
 }
 
 function readChapter(raw: string | null): ChapterId | null {
@@ -54,5 +63,6 @@ export function parseFlags(search: string): DebugFlags {
     chapter: readChapter(p.get('chapter')),
     autoName: p.get('autoname') === '1',
     calm: readCalm(p.get('calm')),
+    safe: p.get('safe') === '1',
   };
 }
