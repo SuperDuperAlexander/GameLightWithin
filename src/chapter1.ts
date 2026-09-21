@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import {
   BREATH,
   CALM,
@@ -116,7 +116,7 @@ export class Chapter1 {
   private breathsTotal = 0;
   private breathsCalm = 0;
   private lastDt = 0;
-  private readonly tmp = new THREE.Vector3();
+  private readonly tmp = new Vector3();
 
   constructor(private readonly game: Game) {
     this.bus = game.bus;
@@ -157,15 +157,9 @@ export class Chapter1 {
   // ---------- setup ----------
 
   private buildSceneObjects(): void {
-    const scene = this.game.world.scene;
-    scene.add(
-      this.motes.group,
-      this.fogVolume.group,
-      this.sprout.group,
-      this.bird,
-      this.butterfly.group,
-    );
-    this.game.world.player.group.add(this.wakingMist.group);
+    // Everything built here already stands in the scene. The mist is the one
+    // thing that belongs to the player rather than to the valley.
+    this.wakingMist.group.parent = this.game.world.player.group;
 
     this.fogVolume.group.position.set(
       LAYOUT.fog.x,
@@ -190,7 +184,6 @@ export class Chapter1 {
         anchor.visible = spring.revealed;
         glow.mesh.position.set(anchor.position.x, anchor.position.y + 1, anchor.position.z);
       }
-      scene.add(glow.mesh);
       this.springGlows.set(spring.config.id, glow);
     }
   }
@@ -248,9 +241,7 @@ export class Chapter1 {
       if (id === 'bird') this.bird.visible = true;
       if (id === 'butterfly') {
         this.butterfly.fly(
-          LAYOUT.butterflyPath.map(
-            (p) => new THREE.Vector3(p.x, groundHeight(p.x, p.z) + 1.3, p.z),
-          ),
+          LAYOUT.butterflyPath.map((p) => new Vector3(p.x, groundHeight(p.x, p.z) + 1.3, p.z)),
         );
       }
     });
@@ -528,7 +519,7 @@ export class Chapter1 {
     if (from !== 'fog') return;
     // The fog dissolves into motes that flow into the player.
     for (let i = 0; i < amount * 6; i++) {
-      const start = this.fogVolume.randomPoint(new THREE.Vector3());
+      const start = this.fogVolume.randomPoint(new Vector3());
       this.motes.send(
         start,
         TRANSFORM.dissolveSeconds * (0.5 + Math.random() * 0.5),

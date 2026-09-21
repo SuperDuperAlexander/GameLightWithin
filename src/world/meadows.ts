@@ -1,9 +1,19 @@
-import * as THREE from 'three';
 import { LAYOUT2, WORLD2 } from '../content/chapter2';
 import type { BodyPoint } from '../content/chapter2';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import { computeVertexNormals } from '../render/geometry';
+import {
+  Color3,
+  group,
+  linearColor,
+  mesh as makeMesh,
+  mixColor,
+  setVertexColors,
+} from '../render/scene3d';
+import type { Group } from '../render/scene3d';
+import { HeightField } from './heightField';
 import type { FixturesResult, Place, PropsResult, TerrainResult } from './place';
 import { scatterProps } from './props';
 import {
@@ -13,15 +23,6 @@ import {
   buildSingingStone,
   buildStandingStone,
 } from './props2';
-
-/**
- * Chapter 2's place: high alpine meadows behind the bridge.
- *
- * The valley of chapter 1 was narrow and led one way. The meadows are open:
- * the floor is wide everywhere, the hills are low, and the far mountains close
- * the view instead of the valley sides. A player who is asked to go inside and
- * feel what is there should not also be hemmed in.
- */
 
 /** The path winds up the meadows in long, slow curves. */
 function centerX(z: number): number {
@@ -173,6 +174,13 @@ function isHole(): boolean {
   return false;
 }
 
+/** Mixes two colours into a third. Kept here so the terrain loop makes no garbage. */
+function lerpTo(out: Color3, a: Color3, b: Color3, t: number): void {
+  out.r = a.r + (b.r - a.r) * t;
+  out.g = a.g + (b.g - a.g) * t;
+  out.b = a.b + (b.b - a.b) * t;
+}
+
 function buildTerrain(): TerrainResult {
   const minZ = WORLD2.lengthEnd - 18;
   const maxZ = WORLD2.lengthStart + 18;
@@ -185,15 +193,17 @@ function buildTerrain(): TerrainResult {
   const colors: number[] = [];
   const indices: number[] = [];
   const cols = segX + 1;
+  const heights = new Float32Array(cols * (segZ + 1));
+  const solid = new Uint8Array(segX * segZ).fill(1);
 
-  const green = new THREE.Color(PALETTE.growthGreen);
-  const deep = new THREE.Color(PALETTE.deepGreen);
-  const violet = new THREE.Color(PALETTE.farHillsViolet);
-  const earth = new THREE.Color(0xa08a68);
+  const green = linearColor(PALETTE.growthGreen);
+  const deep = linearColor(PALETTE.deepGreen);
+  const violet = linearColor(PALETTE.farHillsViolet);
+  const earth = linearColor(0xa08a68);
   // Alpine meadow: lighter and yellower than the valley floor below it.
-  const meadow = new THREE.Color(PALETTE.growthGreen).lerp(new THREE.Color(0xdfe884), 0.55);
-  const straw = new THREE.Color(0xd2bc7e);
-  const tmp = new THREE.Color();
+  const meadow = mixColor(linearColor(PALETTE.growthGreen), linearColor(0xdfe884), 0.55);
+  const straw = linearColor(0xd2bc7e);
+  const tmp = new Color3();
 
   for (let iz = 0; iz <= segZ; iz++) {
     for (let ix = 0; ix <= segX; ix++) {
@@ -201,23 +211,27 @@ function buildTerrain(): TerrainResult {
       const z = minZ + (iz / segZ) * depth;
       const y = height(x, z);
       positions.push(x, y, z);
+      heights[iz * cols + ix] = y;
 
       const slope = height(x + 1, z) - y;
       const shade = clamp(0.58 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 29) * 0.28, 0.48, 1);
       const height01 = clamp01((y + 2) / 22);
-      tmp.copy(deep).lerp(green, clamp01(1.2 - height01 * 1.3));
+      lerpTo(tmp, deep, green, clamp01(1.2 - height01 * 1.3));
       // High ground turns violet, so the meadows read as high up.
-      tmp.lerp(violet, clamp01((height01 - 0.42) * 1.5));
+      lerpTo(tmp, tmp, violet, clamp01((height01 - 0.42) * 1.5));
 
       const drift = fbm2d(x * 0.03 + 21, z * 0.03 + 17, 3, 61);
-      tmp.lerp(meadow, clamp01((drift - 0.38) * 2.1));
+      lerpTo(tmp, tmp, meadow, clamp01((drift - 0.38) * 2.1));
       const dry = fbm2d(x * 0.019 + 71, z * 0.019 + 39, 2, 83);
-      tmp.lerp(straw, clamp01((dry - 0.56) * 1.6) * 0.7);
+      lerpTo(tmp, tmp, straw, clamp01((dry - 0.56) * 1.6) * 0.7);
       const mottle = 0.9 + fbm2d(x * 0.5, z * 0.5, 2, 97) * 0.22;
 
-      tmp.multiplyScalar(shade * mottle);
+      const lit = shade * mottle;
+      tmp.r *= lit;
+      tmp.g *= lit;
+      tmp.b *= lit;
       const track = pathAmount(x, z);
-      if (track > 0) tmp.lerp(earth, track * 0.8);
+      if (track > 0) lerpTo(tmp, tmp, earth, track * 0.8);
       colors.push(tmp.r, tmp.g, tmp.b);
     }
   }
@@ -229,36 +243,47 @@ function buildTerrain(): TerrainResult {
     }
   }
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  geo.computeBoundsTree();
+  const mesh = makeMesh(
+    'terrain',
+    computeVertexNormals({
+      positions,
+      normals: [],
+      uvs: new Array<number>(cols * (segZ + 1) * 2).fill(0),
+      indices,
+    }),
+  );
+  setVertexColors(mesh, colors);
+  mesh.material = worldMaterial({ rim: 0.07 });
+  mesh.isPickable = false;
+  mesh.receiveShadows = true;
+  mesh.freezeWorldMatrix();
 
-  const material = worldMaterial({ vertexColors: true, rim: 0.07 });
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.name = 'terrain';
-  mesh.matrixAutoUpdate = false;
-  mesh.updateMatrix();
+  const far = group('mountains');
+  buildMountains().parent = far;
 
-  const far = new THREE.Group();
-  far.name = 'mountains';
-  far.add(buildMountains());
+  const field = new HeightField(
+    -WORLD2.halfWidth,
+    minZ,
+    width / segX,
+    depth / segZ,
+    segX,
+    segZ,
+    heights,
+    solid,
+  );
 
-  return { mesh, extras: [far], colliders: [mesh] };
+  return { mesh, extras: [far], surface: field.sampler() };
 }
 
 function buildFixtures(): FixturesResult {
-  const group = new THREE.Group();
-  group.name = 'fixtures';
-  const anchors = new Map<string, THREE.Group>();
+  const fixtures = group('fixtures');
+  const anchors = new Map<string, Group>();
   const blockers: { x: number; z: number; radius: number }[] = [];
 
-  const put = (id: string, object: THREE.Group, x: number, z: number, blockR = 0): void => {
+  const put = (id: string, object: Group, x: number, z: number, blockR = 0): void => {
     object.position.set(x, height(x, z), z);
+    object.parent = fixtures;
     anchors.set(id, object);
-    group.add(object);
     if (blockR > 0) blockers.push({ x, z, radius: blockR });
   };
 
@@ -275,7 +300,7 @@ function buildFixtures(): FixturesResult {
   put('singingStone', buildSingingStone(), LAYOUT2.singingStone.x, LAYOUT2.singingStone.z, 0.8);
   put('lightWell', buildLightWell(), LAYOUT2.lightWell.x, LAYOUT2.lightWell.z);
 
-  return { group, anchors, blockers };
+  return { group: fixtures, anchors, blockers };
 }
 
 export const meadows: Place = {

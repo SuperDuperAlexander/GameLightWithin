@@ -1,5 +1,6 @@
 import { LAYOUT, WORLD } from '../content/chapter1';
-import * as THREE from 'three';
+import { group } from '../render/scene3d';
+import type { Group } from '../render/scene3d';
 import type { FixturesResult, Place, PropsResult, TerrainResult } from './place';
 import { buildSignStone, buildSpringBasin, scatterProps } from './props';
 import {
@@ -48,9 +49,8 @@ export const valley: Place = {
     });
   },
   buildFixtures(): FixturesResult {
-    const group = new THREE.Group();
-    group.name = 'fixtures';
-    const anchors = new Map<string, THREE.Group>();
+    const fixtures = group('fixtures');
+    const anchors = new Map<string, Group>();
 
     for (const [id, spot] of [
       ['spring1', LAYOUT.spring1],
@@ -59,8 +59,8 @@ export const valley: Place = {
     ] as const) {
       const basin = buildSpringBasin();
       basin.position.set(spot.x, terrainHeight(spot.x, spot.z), spot.z);
+      basin.parent = fixtures;
       anchors.set(id, basin);
-      group.add(basin);
     }
 
     const stone = buildSignStone();
@@ -70,9 +70,9 @@ export const valley: Place = {
       LAYOUT.signStone.z,
     );
     stone.rotation.y = -0.6;
-    group.add(stone);
+    stone.parent = fixtures;
 
-    return { group, anchors, blockers: [] };
+    return { group: fixtures, anchors, blockers: [] };
   },
   bridge: { x: LAYOUT.bridge.x, z: LAYOUT.bridge.z, deckZ: LAYOUT.gap.z1 + 3 },
 };

@@ -1,5 +1,10 @@
-import * as THREE from 'three';
+import { Engine } from '@babylonjs/core/Engines/engine';
+import { Scene } from '@babylonjs/core/scene';
+import { TargetCamera } from '@babylonjs/core/Cameras/targetCamera';
+import { Color4 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { CAMERA, PLAYER, SCENE_STARTS } from './content/chapter1';
+import { PALETTE } from './content/palette';
 import { FollowCamera } from './core/camera';
 import type { DebugFlags } from './core/debugFlags';
 import { EventBus } from './core/events';
@@ -17,6 +22,8 @@ import { readDiagnostics, watchShaderErrors } from './core/diagnostics';
 import type { Diagnostics } from './core/diagnostics';
 import { loadSettings } from './core/save';
 import { PainterlyRenderer } from './render/painterly';
+import { linearColor, setStage } from './render/scene3d';
+import { World } from './world/world';
 import { border } from './world/place';
 
 /** The fixed simulation step, in seconds. */
@@ -25,7 +32,6 @@ const FIXED_STEP = 1 / 60;
 const MAX_CATCHUP = 1;
 /** A hard step limit, so one very slow frame cannot lock the page. */
 const MAX_STEPS = 90;
-import { World } from './world/world';
 
 /**
  * The game loop and everything that ties the world, the systems and the UI
@@ -34,10 +40,12 @@ import { World } from './world/world';
 export class Game {
   readonly bus = new EventBus();
   readonly canvas: HTMLCanvasElement;
-  readonly renderer: THREE.WebGLRenderer;
+  readonly engine: Engine;
+  readonly scene: Scene;
   readonly input = new InputState();
   readonly fps = new FpsMeter();
   camera!: FollowCamera;
+  view!: TargetCamera;
   world!: World;
   painter!: PainterlyRenderer;
   quality!: QualitySettings;
@@ -53,8 +61,9 @@ export class Game {
   /** Metres per second the player moved on the last frame. */
   speed = 0;
   private facing = Math.PI;
-  private readonly forward = new THREE.Vector3();
-  private readonly right = new THREE.Vector3();
+  private readonly forward = new Vector3();
+  private readonly right = new Vector3();
+  private readonly eye = new Vector3();
   paused = false;
   /** Set by the chapter while a panel is open. */
   worldInputBlocked = false;
@@ -79,24 +88,31 @@ export class Game {
     readonly root: HTMLElement,
     readonly flags: DebugFlags,
   ) {
-    // Before the renderer exists, so nothing the driver says is missed.
+    // Before the engine exists, so nothing the driver says is missed.
     watchShaderErrors();
     this.canvas = document.createElement('canvas');
     this.canvas.id = 'scene';
     this.root.appendChild(this.canvas);
 
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
-      antialias: false,
-      alpha: false,
-      powerPreference: 'high-performance',
-    });
-    this.renderer.setPixelRatio(pixelRatioCap());
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    this.renderer.setClearColor(0xcfd2d6, 1);
-    // Soft shadow edges. The map itself is sized by the quality tier.
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.engine = new Engine(
+      this.canvas,
+      false,
+      { powerPreference: 'high-performance', alpha: false, stencil: false, antialias: false },
+      false,
+    );
+    this.engine.setHardwareScalingLevel(1 / pixelRatioCap());
+
+    this.scene = new Scene(this.engine);
+    // The world is right-handed with y up, the way every position, angle and
+    // piece of shader maths in the game is written.
+    this.scene.useRightHandedSystem = true;
+    // A sky that fails to draw should leave a pale sky, not a black one.
+    const clear = linearColor(PALETTE.skyGrey);
+    this.scene.clearColor = new Color4(clear.r, clear.g, clear.b, 1);
+    // The game does its own input. Nothing on screen is picked with a ray.
+    this.scene.skipPointerMovePicking = true;
+    this.scene.constantlyUpdateMeshUnderPointer = false;
+    setStage(this.scene);
   }
 
   /** What this device's graphics really are. Read once, after the first frame. */
@@ -109,15 +125,21 @@ export class Game {
     this.autoQuality = this.flags.quality === null && settings.quality === 'auto';
     this.quality = settingsFor(tier);
 
-    this.world = new World(this.quality, this.renderer);
     this.camera = new FollowCamera(window.innerWidth / Math.max(1, window.innerHeight));
     this.camera.reducedMotion = settings.reducedMotion;
+    this.view = new TargetCamera('view', new Vector3(0, 6, 12), this.scene);
+    this.view.fov = (CAMERA.fov * Math.PI) / 180;
+    this.view.minZ = CAMERA.near;
+    this.view.maxZ = CAMERA.far;
+    this.scene.activeCamera = this.view;
+
+    this.world = new World(this.scene, this.quality);
     this.world.color.reducedMotion = settings.reducedMotion;
 
     this.painter = new PainterlyRenderer(
-      this.renderer,
-      this.world.scene,
-      this.camera.camera,
+      this.engine,
+      this.scene,
+      this.view,
       !this.flags.noPaint,
       this.flags.safe,
     );
@@ -126,6 +148,7 @@ export class Game {
     const start = SCENE_STARTS[this.flags.startScene ?? 1];
     this.world.placePlayer(start.x, start.z);
     this.camera.snapTo(this.world.playerPosition);
+    this.syncCamera();
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -135,14 +158,14 @@ export class Game {
     this.loop(this.last);
     // Read after the first frame, so anything the driver refused while
     // compiling has already been said.
-    this.diagnostics = readDiagnostics(this.renderer);
+    this.diagnostics = readDiagnostics(this.engine);
   }
 
   /** Swaps the quality tier at runtime. */
   setQuality(tier: QualityTier): void {
     if (this.quality?.tier === tier) return;
     this.quality = settingsFor(tier);
-    this.renderer.setPixelRatio(this.quality.pixelRatio);
+    this.engine.setHardwareScalingLevel(1 / this.quality.pixelRatio);
     this.painter.applyQuality(this.quality);
     this.world.applyQuality(this.quality);
     this.resize();
@@ -167,11 +190,15 @@ export class Game {
   }
 
   resize(): void {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    this.renderer.setSize(w, h, false);
-    this.camera.resize(w, h);
-    this.painter.setSize(w, h);
+    this.engine.resize();
+    this.camera.resize(window.innerWidth, window.innerHeight);
+    this.painter.setSize();
+  }
+
+  /** Copies the follow camera's eye and look-at onto the camera that draws. */
+  private syncCamera(): void {
+    this.view.position.copyFrom(this.camera.eye(this.eye));
+    this.view.setTarget(this.camera.lookAt);
   }
 
   private loop = (now: number): void => {
@@ -205,7 +232,10 @@ export class Game {
     }
     if (steps === MAX_STEPS) this.accumulator = 0;
 
-    this.painter.render(real, this.time);
+    this.syncCamera();
+    this.engine.beginFrame();
+    this.painter.render(this.time);
+    this.engine.endFrame();
   };
 
   /** One fixed simulation step. */
@@ -311,7 +341,8 @@ export class Game {
     this.input.dispose();
     this.painter.dispose();
     this.world.dispose();
-    this.renderer.dispose();
+    this.scene.dispose();
+    this.engine.dispose();
   }
 }
 

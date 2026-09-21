@@ -43,6 +43,9 @@ void game.start().then(() => {
   // debug flag is set, so a normal player never sees it.
   if (flags.debug || flags.autobreathe || flags.startScene !== null) {
     (window as Window & { __lw?: unknown }).__lw = chapter.testApi();
+    // The world itself, for the side-by-side tool in `tools/`. It is the only
+    // way to ask the running game what it actually put on the screen.
+    (window as Window & { __lwGame?: unknown }).__lwGame = game;
   }
   document.body.dataset.ready = '1';
 });

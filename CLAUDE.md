@@ -19,10 +19,13 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 ## Stack (fixed)
 
-- TypeScript in strict mode. Vite. Three.js plain — no React, no React Three Fiber.
-- `three-mesh-bvh` for collision and ground checks.
-- `EffectComposer` from `three/addons` for post-processing.
-- Custom GLSL for the painted look and the grey-to-colour system.
+- TypeScript in strict mode. Vite. Babylon.js plain — no React, no scene editor,
+  no `.babylon` or glTF files. Everything is built in code.
+- Ground height and collision read the heightfield the terrain was built from.
+  No physics engine, no acceleration structure, no raycast against the mesh.
+- Babylon `PostProcess` passes for post-processing.
+- Custom GLSL for the painted look. The grey-to-colour system is one material
+  plugin on the lit surfaces and one shared piece of code in the raw shaders.
 - Web Audio API for all sound. Sounds are generated in code; there are no audio files.
 - UI overlays in plain HTML and CSS on top of the canvas.
 - Saving: `localStorage` only.
@@ -52,8 +55,10 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - A watchdog watches the real frame rate during play and steps the tier down
   when a device cannot keep up. It only ever steps **down**, so it cannot
   oscillate. It is off as soon as the player picks a tier by hand.
-- Grass is built once at the highest count. A tier only changes how many cards
-  are drawn and how close they fade, so a quality change takes effect at once.
+- Grass is built once at the highest count, as thin instances of one card. A
+  tier only changes how many of them are drawn and how close they fade, so a
+  quality change takes effect at once. The scattered trees are thin instances
+  of fourteen originals, so a wood costs about what its originals cost.
   `skyStrokes` and `treeBlobs` are baked into the geometry at world build.
 
 ## Art rules
@@ -63,7 +68,7 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 - Grass and flowers are camera-facing cards with procedural brush-stroke alpha.
 - Sky is a large dome with a painted gradient and soft cloud strokes from noise.
 - Surfaces are physically based and rough, never metal. The shadowed side of
-  everything is filled by an environment map filtered from the game's own sky,
+  everything is filled by a reflection probe rendered from the game's own sky,
   so the sky light always matches what the player can see and greys and warms
   with the valley for free. There is no ambient fill light on top of it: a flat
   fill only washes the contrast out.
@@ -97,8 +102,10 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 - All tunable numbers live in `src/content/chapter1.ts`. No magic numbers in systems.
 - Systems talk through the typed event bus in `src/core/events.ts`.
-- Keep systems testable without Three.js wherever possible. The logic systems
-  (`breath`, `calm`, `light`, `transform`, `manifest`, `checks`) import no Three.js.
+- Keep systems testable without a graphics device wherever possible. The logic
+  systems (`breath`, `calm`, `light`, `transform`, `manifest`, `checks`) import
+  nothing from the engine, and the follow camera holds only maths, so the tests
+  that matter run in plain Vitest with no canvas.
 
 ## Accessibility
 
@@ -156,6 +163,10 @@ whatever anyone believes.
 
 ## Shaders
 
+- Geometry is generated in `src/render/geometry.ts`. Front faces wind
+  counter-clockwise and the scene is right-handed; the engine assumes the
+  other way round unless every mesh and every culling material is told, and
+  the cost of getting it wrong is the ground quietly disappearing.
 - Every custom shader declares `precision highp float;` in **both** stages.
   A desktop driver and a software renderer both treat `mediump` as full
   precision, so a shader a mobile GPU cannot run compiles and looks right

@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import type { Engine } from '@babylonjs/core/Engines/engine';
 
 /**
  * What this device's graphics actually are.
@@ -12,7 +12,7 @@ import type * as THREE from 'three';
  * wrong instead of leaving it to be guessed at.
  */
 export interface Diagnostics {
-  /** 1 or 2. Three.js needs 2; a device with 1 cannot run the game at all. */
+  /** 1 or 2. The game needs 2; a device with 1 cannot run it at all. */
   webgl: number;
   /** The GPU as the driver names it, when the browser will say. */
   gpu: string;
@@ -37,8 +37,8 @@ const shaderErrors: string[] = [];
 /**
  * Catches driver complaints about shaders.
  *
- * Three.js writes these to the console, where nobody on a phone will ever see
- * them. This keeps them so the debug panel can show them.
+ * The engine writes these to the console, where nobody on a phone will ever
+ * see them. This keeps them so the debug panel can show them.
  */
 export function watchShaderErrors(): void {
   const original = console.error.bind(console);
@@ -61,9 +61,9 @@ function gpuName(gl: WebGL2RenderingContext | WebGLRenderingContext): string {
   }
 }
 
-export function readDiagnostics(renderer: THREE.WebGLRenderer): Diagnostics {
-  const gl = renderer.getContext();
-  const canvas = renderer.domElement;
+export function readDiagnostics(engine: Engine): Diagnostics {
+  const gl = engine._gl;
+  const canvas = engine.getRenderingCanvas();
   let highp: boolean;
   try {
     const format = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
@@ -71,8 +71,9 @@ export function readDiagnostics(renderer: THREE.WebGLRenderer): Diagnostics {
   } catch {
     highp = false;
   }
-  const isGl2 =
-    typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+  const isGl2 = engine.webGLVersion >= 2;
+  const caps = engine.getCaps();
+  const scaling = engine.getHardwareScalingLevel();
   return {
     webgl: isGl2 ? 2 : 1,
     gpu: gpuName(gl),
@@ -80,13 +81,11 @@ export function readDiagnostics(renderer: THREE.WebGLRenderer): Diagnostics {
     // WebGL 2 has half-float colour buffers in core; only filtering is an
     // extension, and a renderer that cannot filter them shows banding, not
     // black.
-    halfFloat: isGl2 || gl.getExtension('OES_texture_half_float') !== null,
-    halfFloatLinear:
-      (isGl2 && gl.getExtension('OES_texture_float_linear') !== null) ||
-      gl.getExtension('OES_texture_half_float_linear') !== null,
-    cssSize: `${String(Math.round(canvas.clientWidth))}x${String(Math.round(canvas.clientHeight))}`,
-    bufferSize: `${String(canvas.width)}x${String(canvas.height)}`,
-    pixelRatio: renderer.getPixelRatio(),
+    halfFloat: caps.textureHalfFloatRender,
+    halfFloatLinear: caps.textureHalfFloatLinearFiltering,
+    cssSize: `${String(Math.round(canvas?.clientWidth ?? 0))}x${String(Math.round(canvas?.clientHeight ?? 0))}`,
+    bufferSize: `${String(engine.getRenderWidth())}x${String(engine.getRenderHeight())}`,
+    pixelRatio: Number((1 / (scaling || 1)).toFixed(2)),
     devicePixelRatio: globalThis.devicePixelRatio ?? 1,
     viewport: `${String(Math.round(window.innerWidth))}x${String(Math.round(window.innerHeight))}`,
     shaderErrors: [...shaderErrors],

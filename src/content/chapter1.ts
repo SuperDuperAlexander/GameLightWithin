@@ -224,8 +224,16 @@ export const SHADOW = {
   far: 180,
   /** How far up the light sits along its own direction. */
   distance: 70,
-  bias: -0.0012,
-  normalBias: 0.05,
+  /** Depth offsets that stop a surface shadowing itself. */
+  bias: 0.0012,
+  normalBias: 0.02,
+  /**
+   * The map size at which the shadow starts hardening at the contact point.
+   * Below it the edge is a plain filtered one, which is cheaper.
+   */
+  contactHardeningFrom: 2048,
+  /** How wide the sun is, as a share of the shadow map. Wider is softer. */
+  sunSize: 0.06,
 } as const;
 
 export const WORLD = {
@@ -345,3 +353,34 @@ export const TIERS = {
 export const TIER_ORDER = ['low', 'medium', 'high'] as const;
 
 export type QualityTier = keyof typeof TIERS;
+
+/**
+ * The light in the valley.
+ *
+ * One directional sun and the sky itself. There is no ambient fill: the sky
+ * light is the fill, and a flat one on top of it washes out the contrast the
+ * rim light and the shadows are there to give.
+ */
+export const LIGHTING = {
+  /** The sun's strength in daylight. */
+  sunIntensity: 2.1,
+  sunColor: 0xfff6e6,
+  /** The sun turns cool and low once night has fallen. */
+  moonColor: 0xc9d6f2,
+  /** How much of the surroundings the sky light fills in, by day. */
+  skyLight: 0.35,
+  /** How much more of it there is at night. Moonlight is not darkness. */
+  skyLightNight: 0.75,
+  /**
+   * The side of the cube the sky is filtered into, in pixels.
+   *
+   * Small on purpose. What is taken from it is the light arriving from every
+   * direction at once, which is a very smooth thing, and working it out means
+   * reading the cube back off the graphics card. A bigger cube would buy
+   * nothing and would be felt as a stutter each time the sky changes.
+   */
+  skyProbeSize: 64,
+  /** Where the distance haze starts and ends, in metres. */
+  hazeStart: 38,
+  hazeEnd: 185,
+} as const;
