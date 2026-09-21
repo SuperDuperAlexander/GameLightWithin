@@ -151,6 +151,26 @@ export interface GameStrings {
     readonly heading: string;
     readonly exportResults: string;
   };
+  /**
+   * What the guide says.
+   *
+   * She speaks after the player has met a thing, never before it. Every line
+   * here is short enough to read while walking, and none of them tells the
+   * player what to do — they name what just happened, or they offer a
+   * direction to somebody who has been wandering.
+   */
+  readonly guide: {
+    readonly close: string;
+    readonly greet: string;
+    readonly lost: string;
+    readonly firstBreath: string;
+    readonly springFound: string;
+    readonly springDry: string;
+    readonly fogMet: string;
+    readonly fogGone: string;
+    readonly seedPlanted: string;
+    readonly bridgeStands: string;
+  };
 }
 
 export const en: GameStrings = {
@@ -287,6 +307,18 @@ export const en: GameStrings = {
     nextChapter: 'Chapter 2',
     comingSoon: 'Coming soon',
     next: 'Next',
+  },
+  guide: {
+    close: 'Go on',
+    greet: 'I am here.',
+    lost: 'The valley goes on that way.',
+    firstBreath: 'There you are.',
+    springFound: 'Something was waiting here.',
+    springDry: 'It is empty now. You have what it held.',
+    fogMet: 'This one does not move for anyone who hurries.',
+    fogGone: 'It was never in your way. It was only in front of you.',
+    seedPlanted: 'Now leave it. Things grow when you are not watching.',
+    bridgeStands: 'You made the way across.',
   },
   debug: {
     heading: 'Debug',

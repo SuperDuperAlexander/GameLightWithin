@@ -8,6 +8,7 @@ import {
   MANIFEST,
   PLAYER,
   RECEIVE,
+  SCENE_GOALS,
   SCENE_STARTS,
   THANKS,
   TRANSFORM,
@@ -50,7 +51,9 @@ import {
   buildBird,
 } from './world/effects';
 import { height as groundHeight } from './world/place';
+import { GuideSystem } from './systems/guide';
 import { DebugPanel } from './ui/debug';
+import { GuidePanel } from './ui/guidePanel';
 import { Hud } from './ui/hud';
 import { Panels } from './ui/panels';
 
@@ -85,6 +88,9 @@ export class Chapter1 {
   private readonly audio: AudioEngine;
   private readonly hud: Hud;
   private readonly panels = new Panels();
+  /** The guide's judgement about when to speak, and what she says. */
+  private readonly guide: GuideSystem;
+  private readonly guidePanel = new GuidePanel(t().guide.close);
   private readonly debug: DebugPanel | null;
 
   private readonly motes: MoteFlow;
@@ -135,6 +141,7 @@ export class Chapter1 {
     this.manifest = new ManifestSystem(this.bus, LAYOUT.seedSpot);
     this.thanks = new ThanksSystem(this.bus, LAYOUT.bridge);
     this.hints = new HintSystem(this.bus);
+    this.guide = new GuideSystem(this.bus);
     this.audio = new AudioEngine(this.bus);
 
     this.hud = new Hud(
@@ -189,7 +196,8 @@ export class Chapter1 {
   }
 
   private mountUi(): void {
-    this.game.root.append(this.hud.root, this.panels.root);
+    this.game.root.append(this.hud.root, this.guidePanel.root, this.panels.root);
+    this.guidePanel.onDismiss = (): void => this.guide.dismiss();
     if (this.debug) this.game.root.append(this.debug.root);
     this.game.input.attach(this.game.canvas, this.hud.joystickZone);
     // A panel is always a pause. The player can stop at any point.
@@ -245,6 +253,42 @@ export class Chapter1 {
         );
       }
     });
+
+    // What the guide speaks to. Every one of these fires *after* the player
+    // has met the thing it is about, which is the whole rule she works to.
+    this.bus.on('breathCompleted', ({ calm }) => {
+      if (calm) this.guide.progressed();
+      this.guide.say('firstBreath', { text: 'firstBreath' });
+    });
+    this.bus.on('springRevealed', () => {
+      this.guide.progressed();
+      this.guide.say('springFound', { text: 'springFound' });
+    });
+    this.bus.on('springEmptied', () => {
+      this.guide.progressed();
+      this.guide.say('springDry', { text: 'springDry' });
+    });
+    this.bus.on('fogStepChanged', ({ step }) => {
+      if (step >= 1) {
+        this.guide.progressed();
+        // A blockage is where a teaching belongs: it waits to be read, and
+        // later it is where Dr. Rulin's own words will sit.
+        this.guide.say('fogMet', { text: 'fogMet' }, { holds: false });
+      }
+    });
+    this.bus.on('fogDissolved', () => {
+      this.guide.progressed();
+      this.guide.say('fogGone', { text: 'fogGone' });
+    });
+    this.bus.on('seedPlanted', () => {
+      this.guide.progressed();
+      this.guide.say('seedPlanted', { text: 'seedPlanted' });
+    });
+    this.bus.on('bridgeComplete', () => {
+      this.guide.progressed();
+      this.guide.say('bridgeStands', { text: 'bridgeStands' });
+    });
+    this.bus.on('sceneChanged', () => this.guide.progressed());
   }
 
   /** Writes everything that is only in memory. Safe to call at any time. */
@@ -556,6 +600,8 @@ export class Chapter1 {
       this.runScene(dt, p.x, p.z);
     }
 
+    this.updateGuide(dt, walking);
+
     // Visuals that always run so a paused screen still looks alive.
     this.motes.update(dt, this.game.world.player.chestWorld(this.tmp));
     this.fogVolume.update(dt);
@@ -684,6 +730,48 @@ export class Chapter1 {
       reached = 6;
     }
     if (reached > this.scene) this.advanceTo(reached);
+  }
+
+  /**
+   * The guide, each step.
+   *
+   * She is fed three things: whether the player is mid-breath, whether they
+   * are walking, and what she is currently saying. Everything else she works
+   * out herself. The panel only mirrors her.
+   */
+  private updateGuide(dt: number, walking: boolean): void {
+    const breathing = this.breath.phase !== 'idle';
+    this.guide.setBreathing(breathing);
+    this.guide.update(dt, walking);
+
+    const message = this.guide.current;
+    const world = this.game.world;
+
+    // When she has offered the way on, she goes and stands on it. That is
+    // the whole of the directions this game gives: no line on the ground,
+    // no arrow, just a light waiting somewhere the player has not been.
+    if (message?.id === 'lost') {
+      const goal = SCENE_GOALS[this.scene];
+      world.guide.lead(goal ? new Vector3(goal.x, groundHeight(goal.x, goal.z), goal.z) : null);
+    } else if (!message) {
+      world.guide.lead(null);
+    }
+
+    if (message) {
+      if (!this.guidePanel.isShowing) {
+        const line = (t().guide as Record<string, string>)[message.teaching.text] ?? '';
+        this.guidePanel.show(line, message.teaching.video, message.holds);
+      }
+      world.guide.setSpeaking(true);
+      // The figure glances at her while she talks, and only then.
+      world.player.lookTowards(world.guide.position);
+    } else {
+      this.guidePanel.hide();
+      world.guide.setSpeaking(false);
+      world.player.lookTowards(null);
+    }
+    // The chest follows the breath, so standing still is never standing dead.
+    world.player.setBreath(this.breath.playerRing);
   }
 
   private updateHud(dt: number, px: number, pz: number): void {

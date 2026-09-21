@@ -4,13 +4,13 @@ import { Material } from '@babylonjs/core/Materials/material';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { LIGHT, PLAYER } from '../content/chapter1';
+import { BODY_SHAPE, LIGHT, PLAYER, WALK } from '../content/chapter1';
 import { BODY, BODY_POINTS } from '../content/chapter2';
 import type { BodyPoint } from '../content/chapter2';
 import { PALETTE } from '../content/palette';
-import { clamp01 } from '../core/math';
+import { clamp, clamp01, damp, wrapAngle } from '../core/math';
 import { worldMaterial } from '../render/materials';
 import { circleGeo, coneGeo, cylinderGeo, rotateXGeo, sphereGeo } from '../render/geometry';
 import type { Group } from '../render/scene3d';
@@ -93,6 +93,17 @@ export class PlayerFigure {
   private gait = 0;
   private readonly body: Group;
   private readonly hem: Mesh;
+  private readonly neck: Group;
+  /** Hip and knee joints, one pair per leg. */
+  private readonly legs: { hip: Group; knee: Group; side: number }[] = [];
+  /** Shoulder and elbow joints, and where the arm hangs when still. */
+  private readonly arms: { socket: Group; elbow: Group; side: number; rest: number }[] = [];
+  /** 0 lungs empty, 1 lungs full. The chapter feeds it from the breath. */
+  private breath = 0;
+  /** Where the head is being drawn, in world space, or null for straight on. */
+  private readonly lookAt = new Vector3();
+  private looking = false;
+  private clock = 0;
 
   constructor() {
     this.group = group('player');
@@ -106,10 +117,44 @@ export class PlayerFigure {
     const skin = worldMaterial({ color: 0xe6e2dc, rim: 0.45 });
     const cloak = worldMaterial({ color: 0xcfd6dd, rim: 0.45 });
 
-    // Rounded body, wider at the hem so it reads as a cloak.
-    const torso = makeMesh('torso', cylinderGeo(0.3, 0.52, 1.1, 12, 1));
+    const cloth = worldMaterial({ color: 0xa9b0b8, rim: 0.4 });
+    const boot = worldMaterial({ color: 0x6f6a63, rim: 0.4 });
+
+    // The legs hang from the hip and are built the way a leg bends: a thigh
+    // that swings, a shin that only ever folds backwards, and a foot that
+    // stays flat until the leg leaves the ground.
+    for (const side of [-1, 1] as const) {
+      const hip = group(side < 0 ? 'hipLeft' : 'hipRight');
+      hip.position.set(side * BODY_SHAPE.hipWidth, BODY_SHAPE.hipHeight, 0);
+      hip.parent = this.body;
+
+      const thigh = makeMesh('thigh', cylinderGeo(0.085, 0.105, BODY_SHAPE.thigh, 7, 1));
+      thigh.material = cloth;
+      thigh.position.y = -BODY_SHAPE.thigh / 2;
+      thigh.parent = hip;
+
+      const knee = group(side < 0 ? 'kneeLeft' : 'kneeRight');
+      knee.position.y = -BODY_SHAPE.thigh;
+      knee.parent = hip;
+
+      const shin = makeMesh('shin', cylinderGeo(0.07, 0.085, BODY_SHAPE.shin, 7, 1));
+      shin.material = cloth;
+      shin.position.y = -BODY_SHAPE.shin / 2;
+      shin.parent = knee;
+
+      const foot = makeMesh('foot', sphereGeo(0.1, 8, 6));
+      foot.material = boot;
+      foot.scaling.set(0.85, 0.6, 1.5);
+      foot.position.set(0, -BODY_SHAPE.shin, 0.05);
+      foot.parent = knee;
+
+      this.legs.push({ hip, knee, side });
+    }
+
+    // Rounded body. It ends above the knee now, so the legs can be seen.
+    const torso = makeMesh('torso', cylinderGeo(0.3, 0.4, BODY_SHAPE.torso, 12, 1));
     torso.material = cloak;
-    torso.position.y = 0.58;
+    torso.position.y = BODY_SHAPE.hipHeight + BODY_SHAPE.torso / 2 - 0.06;
     torso.parent = this.body;
 
     const shoulders = makeMesh('shoulders', sphereGeo(0.32, 14, 10));
@@ -118,15 +163,48 @@ export class PlayerFigure {
     shoulders.scaling.set(1, 0.72, 0.9);
     shoulders.parent = this.body;
 
-    // A small, faceless head.
+    // The arms hang from the shoulder and swing against the legs, which is
+    // what tells the eye that the figure is walking and not sliding.
+    for (const side of [-1, 1] as const) {
+      const socket = group(side < 0 ? 'armLeft' : 'armRight');
+      socket.position.set(side * BODY_SHAPE.shoulderWidth, BODY_SHAPE.shoulderHeight, 0);
+      socket.rotation.z = -side * 0.2;
+      socket.parent = this.body;
+
+      const upper = makeMesh('upperArm', cylinderGeo(0.07, 0.085, BODY_SHAPE.upperArm, 7, 1));
+      upper.material = cloak;
+      upper.position.y = -BODY_SHAPE.upperArm / 2;
+      upper.parent = socket;
+
+      const elbow = group(side < 0 ? 'elbowLeft' : 'elbowRight');
+      elbow.position.y = -BODY_SHAPE.upperArm;
+      elbow.parent = socket;
+
+      const fore = makeMesh('forearm', cylinderGeo(0.055, 0.07, BODY_SHAPE.forearm, 7, 1));
+      fore.material = skin;
+      fore.position.y = -BODY_SHAPE.forearm / 2;
+      fore.parent = elbow;
+
+      const hand = makeMesh('hand', sphereGeo(0.062, 8, 6));
+      hand.material = skin;
+      hand.position.y = -BODY_SHAPE.forearm;
+      hand.parent = elbow;
+
+      this.arms.push({ socket, elbow, side, rest: -side * 0.2 });
+    }
+
+    // A small, faceless head, on a neck that can turn.
+    this.neck = group('neck');
+    this.neck.position.y = 1.47;
+    this.neck.parent = this.body;
     const head = makeMesh('head', sphereGeo(0.21, 14, 12));
     head.material = skin;
-    head.position.y = 1.47;
-    head.parent = this.body;
+    head.parent = this.neck;
 
-    this.hem = makeMesh('hem', coneGeo(0.56, 0.42, 12, 1, true));
+    // The cloak stops above the knee. Any lower and the legs are boots only.
+    this.hem = makeMesh('hem', coneGeo(0.42, 0.36, 12, 1, true));
     this.hem.material = cloak;
-    this.hem.position.y = 0.21;
+    this.hem.position.y = BODY_SHAPE.hipHeight + 0.02;
     this.hem.parent = this.body;
 
     this.glowMaterial = new ShaderMaterial(
@@ -262,6 +340,7 @@ export class PlayerFigure {
    * @param speed the player's ground speed in metres per second
    */
   update(dt: number, groundY: number, speed = 0): void {
+    this.clock += dt;
     this.animateWalk(dt, speed);
     this.moteTime += dt;
     const visible = this.moteMeshes.filter((m) => m.isEnabled(false)).length;
@@ -283,20 +362,18 @@ export class PlayerFigure {
   /**
    * A walk, made from the movement itself rather than from a clip.
    *
-   * The body rises and falls twice per stride, rolls a little from side to
-   * side, and leans into the direction of travel. Without it the figure slides
-   * over the ground like a chess piece, which undoes everything the rest of
-   * the scene is doing.
+   * There is no skeleton and no animation file. The body rises and falls
+   * twice per stride, rolls, and leans into the direction of travel; the
+   * legs swing from the hip and the knees fold only backwards; the arms
+   * swing against the legs. All of it hangs off one number, the distance
+   * walked, so the step matches the speed at any frame rate and a figure
+   * that stops mid-stride settles rather than freezing.
    */
   private animateWalk(dt: number, speed: number): void {
     // The phase follows distance, not time, so the step matches the speed.
-    this.walkPhase += speed * dt * 2.6;
-    const want = clamp01(speed / 3);
-    this.gait += (want - this.gait) * Math.min(1, dt * 8);
-
-    const bob = Math.sin(this.walkPhase * 2) * 0.055 * this.gait;
-    const roll = Math.sin(this.walkPhase) * 0.07 * this.gait;
-    const lean = 0.1 * this.gait;
+    this.walkPhase += speed * dt * WALK.phasePerMetre;
+    const want = clamp01(speed / WALK.fullStrideSpeed);
+    this.gait += (want - this.gait) * Math.min(1, dt * WALK.gaitEase);
 
     // Lying down overrides the walk: the figure tips back and settles.
     if (this.lying > 0.001) {
@@ -306,15 +383,91 @@ export class PlayerFigure {
       this.body.rotation.x = -1.35 * eased;
       this.hem.rotation.z = 0;
       this.hem.position.x = 0;
+      this.restLimbs(eased);
       return;
     }
 
-    this.body.position.y = bob;
-    this.body.rotation.z = roll;
-    this.body.rotation.x = lean;
+    const bob = Math.sin(this.walkPhase * 2) * WALK.bob * this.gait;
+    const roll = Math.sin(this.walkPhase) * WALK.roll * this.gait;
+    const lean = WALK.lean * this.gait;
+
+    // Standing still, the figure is not a statue: the weight shifts slowly
+    // from one foot to the other and the chest follows the breath.
+    const sway = Math.sin(this.clock * WALK.swaySpeed) * WALK.sway * (1 - this.gait);
+    const lift = (this.breath - 0.5) * WALK.breathRise * (1 - this.gait);
+
+    this.body.position.y = bob + lift;
+    this.body.rotation.z = roll + sway;
+    this.body.rotation.x = lean - lift * 0.6;
     // The hem swings a beat behind the body, so the cloak has some weight.
     this.hem.rotation.z = -roll * 0.6;
     this.hem.position.x = Math.sin(this.walkPhase - 0.6) * 0.03 * this.gait;
+
+    for (const leg of this.legs) {
+      // One leg is half a stride behind the other.
+      const p = this.walkPhase + (leg.side < 0 ? 0 : Math.PI);
+      leg.hip.rotation.x = Math.sin(p) * WALK.legSwing * this.gait;
+      // A knee only folds backwards, and most on the way through.
+      leg.knee.rotation.x = -Math.max(0, -Math.sin(p - 0.7)) * WALK.kneeBend * this.gait;
+    }
+
+    for (const arm of this.arms) {
+      // The arm swings against the leg on the same side.
+      const p = this.walkPhase + (arm.side < 0 ? Math.PI : 0);
+      arm.socket.rotation.x = Math.sin(p) * WALK.armSwing * this.gait;
+      // Standing, the arms rest a little away from the body and breathe with it.
+      arm.socket.rotation.z = arm.rest * (1 + (1 - this.gait) * this.breath * 0.3);
+      arm.elbow.rotation.x =
+        -(WALK.elbowRest + Math.max(0, Math.sin(p)) * WALK.elbowBend) * this.gait;
+    }
+
+    // The head turns toward whatever it is being drawn to, and no further
+    // than a person can turn without turning their shoulders with them.
+    let turn = 0;
+    let tilt = 0;
+    if (this.looking) {
+      const dx = this.lookAt.x - this.group.position.x;
+      const dz = this.lookAt.z - this.group.position.z;
+      const want2 = Math.atan2(dx, dz) - this.group.rotation.y;
+      turn = clamp(wrapAngle(want2), -WALK.headTurnMax, WALK.headTurnMax);
+      tilt = clamp(
+        (this.lookAt.y - this.group.position.y - 1.5) * 0.4,
+        -WALK.headTurnMax,
+        WALK.headTurnMax,
+      );
+    }
+    this.neck.rotation.y = damp(this.neck.rotation.y, turn, WALK.headEase, dt);
+    this.neck.rotation.x = damp(this.neck.rotation.x, -tilt, WALK.headEase, dt);
+  }
+
+  /** Straightens every limb, for lying down. */
+  private restLimbs(amount: number): void {
+    const keep = 1 - amount;
+    for (const leg of this.legs) {
+      leg.hip.rotation.x *= keep;
+      leg.knee.rotation.x *= keep;
+    }
+    for (const arm of this.arms) {
+      arm.socket.rotation.x *= keep;
+      arm.elbow.rotation.x *= keep;
+    }
+    this.neck.rotation.set(0, 0, 0);
+  }
+
+  /** 0 lungs empty, 1 lungs full. The chapter feeds it from the breath. */
+  setBreath(amount: number): void {
+    this.breath = clamp01(amount);
+  }
+
+  /**
+   * Draws the head toward a point, for example the guide.
+   *
+   * Pass nothing to let it face forward again. The turn is limited and eased,
+   * so the figure glances rather than snapping round.
+   */
+  lookTowards(target: Vector3 | null): void {
+    this.looking = target !== null;
+    if (target) this.lookAt.copyFrom(target);
   }
 
   /** 0 standing, 1 lying down. Chapter 2 uses it before the dream. */

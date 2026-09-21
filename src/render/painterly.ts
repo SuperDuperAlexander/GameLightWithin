@@ -5,6 +5,7 @@ import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imagePro
 import type { Camera } from '@babylonjs/core/Cameras/camera';
 import type { Engine } from '@babylonjs/core/Engines/engine';
 import type { Scene } from '@babylonjs/core/scene';
+import { BLOOM } from '../content/chapter1';
 import type { QualitySettings } from '../core/quality';
 
 /**
@@ -17,6 +18,8 @@ import type { QualitySettings } from '../core/quality';
 
 const KUWAHARA = 'lwKuwahara';
 const PAPER = 'lwPaper';
+const BLOOM_CUT = 'lwBloomCut';
+const BLOOM_BLUR = 'lwBloomBlur';
 
 /**
  * A Kuwahara-style filter. It smooths areas into brush-like patches while it
@@ -76,6 +79,51 @@ Effect.ShadersStore[`${KUWAHARA}FragmentShader`] = /* glsl */ `
 `;
 
 /**
+ * Bloom, in two steps at a quarter of the width and height.
+ *
+ * The first keeps only what is brighter than daylight — the guide, the
+ * springs, the sun, the gold at the end of a chapter — and throws the rest
+ * away. The second smears what is left sideways, and then downwards on a
+ * second run, which is far cheaper than smearing in both directions at once
+ * and looks the same.
+ *
+ * It runs after the painting filter and not before it. Before it, the filter
+ * would break a soft halo into brush patches, which is the one thing a halo
+ * must not do.
+ */
+Effect.ShadersStore[`${BLOOM_CUT}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec2 vUV;
+  uniform sampler2D textureSampler;
+  uniform float uThreshold;
+  void main() {
+    vec3 col = texture2D(textureSampler, vUV).rgb;
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    // A soft knee, so a surface drifting past the threshold brightens
+    // gradually instead of switching a halo on.
+    float keep = smoothstep(uThreshold, uThreshold * 2.0, lum);
+    gl_FragColor = vec4(col * keep, 1.0);
+  }
+`;
+
+Effect.ShadersStore[`${BLOOM_BLUR}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec2 vUV;
+  uniform sampler2D textureSampler;
+  uniform vec2 uStep;
+  void main() {
+    // Nine taps, weighted as a bell. At a quarter resolution this reaches
+    // a long way across the finished picture.
+    vec3 sum = texture2D(textureSampler, vUV).rgb * 0.2270270270;
+    sum += texture2D(textureSampler, vUV + uStep * 1.3846153846).rgb * 0.3162162162;
+    sum += texture2D(textureSampler, vUV - uStep * 1.3846153846).rgb * 0.3162162162;
+    sum += texture2D(textureSampler, vUV + uStep * 3.2307692308).rgb * 0.0702702703;
+    sum += texture2D(textureSampler, vUV - uStep * 3.2307692308).rgb * 0.0702702703;
+    gl_FragColor = vec4(sum, 1.0);
+  }
+`;
+
+/**
  * The last pass: a subtle procedural paper grain, soft edge darkening
  * (a vignette) and the soft screen darkening used inside the fog.
  */
@@ -83,6 +131,12 @@ Effect.ShadersStore[`${PAPER}FragmentShader`] = /* glsl */ `
   precision highp float;
   varying vec2 vUV;
   uniform sampler2D textureSampler;
+  #ifdef LW_BLOOM
+  // The sharp picture. The blurred highlights arrive as textureSampler,
+  // because this pass sits at the end of the chain the blur runs in.
+  uniform sampler2D uSharp;
+  uniform float uBloom;
+  #endif
   uniform float uTime;
   uniform float uGrain;
   uniform float uVignette;
@@ -109,7 +163,11 @@ Effect.ShadersStore[`${PAPER}FragmentShader`] = /* glsl */ `
   }
 
   void main() {
+    #ifdef LW_BLOOM
+    vec3 col = texture2D(uSharp, vUV).rgb + texture2D(textureSampler, vUV).rgb * uBloom;
+    #else
     vec3 col = texture2D(textureSampler, vUV).rgb;
+    #endif
 
     // Everything above this point is in linear light.
     col = toSRGB(aces(col * uExposure));
@@ -136,7 +194,12 @@ Effect.ShadersStore[`${PAPER}FragmentShader`] = /* glsl */ `
 
 export class PainterlyRenderer {
   private kuwahara: PostProcess | null = null;
+  private bloomCut: PostProcess | null = null;
+  private bloomH: PostProcess | null = null;
+  private bloomV: PostProcess | null = null;
   private paper: PostProcess | null = null;
+  /** Off on the cheapest tier. The halo is the first thing a slow device loses. */
+  private bloom = false;
   /**
    * The buffer the world is drawn into before the filter runs.
    *
@@ -198,6 +261,7 @@ export class PainterlyRenderer {
   private build(): void {
     this.dispose();
     if (this.safeMode) return;
+
     if (this.paintEnabled) {
       this.kuwahara = new PostProcess(
         KUWAHARA,
@@ -223,20 +287,63 @@ export class PainterlyRenderer {
         effect.setFloat('uAmount', 1);
       };
     }
+    if (this.bloom) {
+      this.bloomCut = new PostProcess(
+        BLOOM_CUT,
+        BLOOM_CUT,
+        ['uThreshold'],
+        null,
+        BLOOM.scale,
+        this.camera,
+        Constants.TEXTURE_BILINEAR_SAMPLINGMODE,
+        this.engine,
+        false,
+        null,
+        this.bufferType,
+      );
+      this.bloomCut.onApply = (effect): void => {
+        effect.setFloat('uThreshold', BLOOM.threshold);
+      };
+      const blur = (name: string, across: boolean): PostProcess => {
+        const pass = new PostProcess(
+          name,
+          BLOOM_BLUR,
+          ['uStep'],
+          null,
+          BLOOM.scale,
+          this.camera,
+          Constants.TEXTURE_BILINEAR_SAMPLINGMODE,
+          this.engine,
+          false,
+          null,
+          this.bufferType,
+        );
+        pass.onApply = (effect): void => {
+          const w = Math.max(1, pass.width);
+          const h = Math.max(1, pass.height);
+          effect.setFloat2('uStep', across ? BLOOM.radius / w : 0, across ? 0 : BLOOM.radius / h);
+        };
+        return pass;
+      };
+      this.bloomH = blur(`${BLOOM_BLUR}H`, true);
+      this.bloomV = blur(`${BLOOM_BLUR}V`, false);
+    }
+
     this.paper = new PostProcess(
       PAPER,
       PAPER,
-      ['uTime', 'uGrain', 'uVignette', 'uExposure', 'uDarken', 'uResolution'],
-      null,
+      ['uTime', 'uGrain', 'uVignette', 'uExposure', 'uDarken', 'uResolution', 'uBloom'],
+      this.bloom ? ['uSharp'] : null,
       this.renderScale,
       this.camera,
       Constants.TEXTURE_BILINEAR_SAMPLINGMODE,
       this.engine,
       false,
-      null,
+      this.bloom ? '#define LW_BLOOM\n' : null,
       this.bufferType,
     );
     const paper = this.paper;
+    const cut = this.bloomCut;
     paper.onApply = (effect): void => {
       effect.setFloat('uTime', this.time);
       effect.setFloat('uGrain', 0.035);
@@ -244,6 +351,11 @@ export class PainterlyRenderer {
       effect.setFloat('uExposure', 0.85);
       effect.setFloat('uDarken', this.darken);
       effect.setFloat2('uResolution', paper.width, paper.height);
+      if (cut) {
+        // What went into the highlight cut is the finished painted picture.
+        effect.setTextureFromPostProcess('uSharp', cut);
+        effect.setFloat('uBloom', BLOOM.strength);
+      }
     };
   }
 
@@ -257,8 +369,10 @@ export class PainterlyRenderer {
     // resolution, which is where most of the cost sits.
     this.brushStep = q.paintScale >= 1 ? 1.9 : q.paintScale >= 0.75 ? 2.8 : 3.6;
     const scale = q.paintScale >= 1 ? 1 : q.paintScale >= 0.75 ? 0.85 : 0.5;
-    if (scale === this.renderScale) return;
+    const bloom = q.bloom;
+    if (scale === this.renderScale && bloom === this.bloom) return;
     this.renderScale = scale;
+    this.bloom = bloom;
     this.build();
   }
 
@@ -275,8 +389,9 @@ export class PainterlyRenderer {
 
   /** Called on resize. The passes size themselves from the engine. */
   setSize(): void {
-    this.kuwahara?.markTextureDirty();
-    this.paper?.markTextureDirty();
+    for (const pass of [this.kuwahara, this.bloomCut, this.bloomH, this.bloomV, this.paper]) {
+      pass?.markTextureDirty();
+    }
   }
 
   render(time: number): void {
@@ -285,9 +400,13 @@ export class PainterlyRenderer {
   }
 
   dispose(): void {
-    this.kuwahara?.dispose(this.camera);
-    this.paper?.dispose(this.camera);
+    for (const pass of [this.kuwahara, this.bloomCut, this.bloomH, this.bloomV, this.paper]) {
+      pass?.dispose(this.camera);
+    }
     this.kuwahara = null;
+    this.bloomCut = null;
+    this.bloomH = null;
+    this.bloomV = null;
     this.paper = null;
   }
 }

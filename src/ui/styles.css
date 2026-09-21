@@ -671,3 +671,70 @@ body.fading::after {
 .lw-dream--calm.lw-dream--on .lw-dream-bird {
   animation-timing-function: linear;
 }
+
+/*
+ * What the guide says.
+ *
+ * It sits above the breath controls and never in the middle of the screen,
+ * because the player is looking at the world and not at her. It does not
+ * take the pointer unless it is a teaching that waits to be closed.
+ */
+.lw-guide {
+  position: absolute;
+  /*
+   * Along the top, and stopping short of the pause button. The bottom of
+   * the screen belongs to the breath: on a phone the two breath buttons,
+   * the joystick and the hint line are all down there, and on a short
+   * laptop window anything above them lands in the middle of the picture.
+   */
+  top: calc(16px + var(--safe-t));
+  left: 16px;
+  right: 84px;
+  margin-inline: auto;
+  max-width: 520px;
+  box-sizing: border-box;
+  background: var(--panel);
+  border-radius: 18px;
+  padding: 14px 18px;
+  opacity: 0;
+  transition: opacity 450ms ease;
+  pointer-events: none;
+  text-align: center;
+}
+
+.lw-guide[data-show='true'] {
+  opacity: 1;
+}
+
+.lw-guide[data-hold='true'] {
+  pointer-events: auto;
+}
+
+.lw-guide-text {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.lw-guide-film {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: #1e2234;
+}
+
+.lw-guide-film[hidden] {
+  display: none;
+}
+
+.lw-guide-close {
+  margin-top: 12px;
+  min-height: 48px;
+  padding: 0 24px;
+}
+
+.lw-guide-close[hidden] {
+  display: none;
+}
