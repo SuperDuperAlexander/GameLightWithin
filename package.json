@@ -18,17 +18,16 @@
     "check": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
-    "@pmndrs/assets": "^1.7.0",
-    "three": "0.186.0",
-    "three-mesh-bvh": "0.9.15"
+    "@babylonjs/core": "^8.56.2",
+    "@pmndrs/assets": "^1.7.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "1.56.1",
     "@types/node": "^22.20.2",
-    "@types/three": "0.186.0",
     "eslint": "^10.10.0",
     "jsdom": "^30.0.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.6",
     "typescript": "~5.9",
     "typescript-eslint": "^8.70.0",

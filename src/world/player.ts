@@ -1,133 +1,190 @@
-import * as THREE from 'three';
+import { Constants } from '@babylonjs/core/Engines/constants';
+import { Effect } from '@babylonjs/core/Materials/effect';
+import { Material } from '@babylonjs/core/Materials/material';
+import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { LIGHT, PLAYER } from '../content/chapter1';
 import { BODY, BODY_POINTS } from '../content/chapter2';
 import type { BodyPoint } from '../content/chapter2';
 import { PALETTE } from '../content/palette';
 import { clamp01 } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import { circleGeo, coneGeo, cylinderGeo, rotateXGeo, sphereGeo } from '../render/geometry';
+import type { Group } from '../render/scene3d';
+import { FRONT_FACE, group, linearColor, mesh as makeMesh, stage } from '../render/scene3d';
+import { makeMoteMaterial } from './effects';
+
+const GLOW = 'lwPlayerGlow';
+const BLOB = 'lwBlobShadow';
+
+/** The soft glow that shows calm. It is additive so it never darkens anything. */
+Effect.ShadersStore[`${GLOW}VertexShader`] = /* glsl */ `
+  precision highp float;
+  attribute vec3 position;
+  attribute vec3 normal;
+  uniform mat4 world;
+  uniform mat4 viewProjection;
+  uniform vec3 cameraPosition;
+  varying vec3 vNormalW;
+  varying vec3 vViewDir;
+  void main() {
+    vec4 w = world * vec4(position, 1.0);
+    vNormalW = normalize(mat3(world[0].xyz, world[1].xyz, world[2].xyz) * normal);
+    vViewDir = normalize(cameraPosition - w.xyz);
+    gl_Position = viewProjection * w;
+  }
+`;
+
+Effect.ShadersStore[`${GLOW}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec3 vNormalW;
+  varying vec3 vViewDir;
+  uniform vec3 uColor;
+  uniform float uStrength;
+  void main() {
+    float rim = 1.0 - abs(dot(normalize(vNormalW), normalize(vViewDir)));
+    // A tight rim keeps the glow a halo around the figure.
+    float a = pow(rim, 3.2) * uStrength;
+    gl_FragColor = vec4(uColor, a * 0.16);
+  }
+`;
+
+/** A simple blob shadow, used instead of a real one on the cheapest tier. */
+Effect.ShadersStore[`${BLOB}VertexShader`] = /* glsl */ `
+  precision highp float;
+  attribute vec3 position;
+  attribute vec2 uv;
+  uniform mat4 worldViewProjection;
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = worldViewProjection * vec4(position, 1.0);
+  }
+`;
+
+Effect.ShadersStore[`${BLOB}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  void main() {
+    float d = distance(vUv, vec2(0.5)) * 2.0;
+    gl_FragColor = vec4(0.13, 0.14, 0.17, (1.0 - smoothstep(0.25, 1.0, d)) * 0.42);
+  }
+`;
 
 /**
  * The player: a simple, soft, faceless figure. A rounded body, a small head and
  * a light cloak shape. The glow around them follows the calm value.
  */
 export class PlayerFigure {
-  readonly group = new THREE.Group();
-  readonly motes = new THREE.Group();
-  private readonly glow: THREE.Mesh;
-  private readonly shadow: THREE.Mesh;
-  private readonly moteMeshes: THREE.Mesh[] = [];
+  readonly group: Group;
+  readonly motes: Group;
+  private readonly glow: Mesh;
+  private readonly glowMaterial: ShaderMaterial;
+  private readonly shadow: Mesh;
+  private readonly moteMeshes: Mesh[] = [];
   private moteTime = 0;
   private glowAmount = 0;
   /** Advances with distance walked, so the step never changes with frame rate. */
   private walkPhase = 0;
   /** 0 standing, 1 walking at full stride. */
   private gait = 0;
-  private readonly body = new THREE.Group();
-  private readonly hem: THREE.Mesh;
+  private readonly body: Group;
+  private readonly hem: Mesh;
 
   constructor() {
-    this.group.name = 'player';
+    this.group = group('player');
+    this.body = group('playerBody');
+    this.body.parent = this.group;
+    this.motes = group('playerMotes');
+    this.motes.parent = this.group;
 
     // The player carries the strongest rim in the world, so the figure always
     // reads clearly against the meadow behind them.
-    const body = worldMaterial({ color: 0xe6e2dc, rim: 0.45 });
+    const skin = worldMaterial({ color: 0xe6e2dc, rim: 0.45 });
     const cloak = worldMaterial({ color: 0xcfd6dd, rim: 0.45 });
 
     // Rounded body, wider at the hem so it reads as a cloak.
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.52, 1.1, 12, 1), cloak);
+    const torso = makeMesh('torso', cylinderGeo(0.3, 0.52, 1.1, 12, 1));
+    torso.material = cloak;
     torso.position.y = 0.58;
-    this.body.add(torso);
+    torso.parent = this.body;
 
-    const shoulders = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), cloak);
+    const shoulders = makeMesh('shoulders', sphereGeo(0.32, 14, 10));
+    shoulders.material = cloak;
     shoulders.position.y = 1.12;
-    shoulders.scale.set(1, 0.72, 0.9);
-    this.body.add(shoulders);
+    shoulders.scaling.set(1, 0.72, 0.9);
+    shoulders.parent = this.body;
 
     // A small, faceless head.
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 12), body);
+    const head = makeMesh('head', sphereGeo(0.21, 14, 12));
+    head.material = skin;
     head.position.y = 1.47;
-    this.body.add(head);
+    head.parent = this.body;
 
-    this.hem = new THREE.Mesh(new THREE.ConeGeometry(0.56, 0.42, 12, 1, true), cloak);
+    this.hem = makeMesh('hem', coneGeo(0.56, 0.42, 12, 1, true));
+    this.hem.material = cloak;
     this.hem.position.y = 0.21;
-    this.body.add(this.hem);
+    this.hem.parent = this.body;
 
-    // The soft glow that shows calm. It is additive so it never darkens anything.
-    this.glow = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 20, 14),
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.BackSide,
-        uniforms: {
-          uColor: { value: new THREE.Color(PALETTE.receiveGold) },
-          uStrength: { value: 0 },
-        },
-        vertexShader: /* glsl */ `
-          varying vec3 vNormalW;
-          varying vec3 vViewDir;
-          void main() {
-            vec4 world = modelMatrix * vec4(position, 1.0);
-            vNormalW = normalize(mat3(modelMatrix) * normal);
-            vViewDir = normalize(cameraPosition - world.xyz);
-            gl_Position = projectionMatrix * viewMatrix * world;
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          precision highp float;
-          varying vec3 vNormalW;
-          varying vec3 vViewDir;
-          uniform vec3 uColor;
-          uniform float uStrength;
-          void main() {
-            float rim = 1.0 - abs(dot(normalize(vNormalW), normalize(vViewDir)));
-            // A tight rim keeps the glow a halo around the figure.
-            float a = pow(rim, 3.2) * uStrength;
-            gl_FragColor = vec4(uColor, a * 0.16);
-          }
-        `,
-      }),
+    this.glowMaterial = new ShaderMaterial(
+      GLOW,
+      stage(),
+      { vertex: GLOW, fragment: GLOW },
+      {
+        attributes: ['position', 'normal'],
+        uniforms: ['world', 'viewProjection', 'cameraPosition', 'uColor', 'uStrength'],
+        needAlphaBlending: true,
+      },
     );
-    this.group.add(this.body);
-    for (const part of this.body.children) part.castShadow = true;
-
+    this.glowMaterial.setColor3('uColor', linearColor(PALETTE.receiveGold));
+    this.glowMaterial.setFloat('uStrength', 0);
+    this.glowMaterial.alphaMode = Constants.ALPHA_ADD;
+    this.glowMaterial.disableDepthWrite = true;
+    this.glowMaterial.fogEnabled = false;
+    // The far side of the sphere only, so the glow sits behind the figure.
+    this.glowMaterial.sideOrientation = Material.ClockWiseSideOrientation;
+    this.glow = makeMesh('playerGlow', sphereGeo(1, 20, 14));
+    this.glow.material = this.glowMaterial;
     this.glow.position.y = 0.9;
-    this.glow.renderOrder = 2;
-    this.group.add(this.glow);
+    this.glow.alphaIndex = 2;
+    this.glow.isPickable = false;
+    this.glow.parent = this.group;
 
-    // A simple blob shadow instead of a real-time shadow map.
-    this.shadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.72, 18),
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        uniforms: {},
-        vertexShader:
-          'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-        fragmentShader:
-          'precision highp float; varying vec2 vUv; void main(){ float d = distance(vUv, vec2(0.5)) * 2.0; gl_FragColor = vec4(0.13, 0.14, 0.17, (1.0 - smoothstep(0.25, 1.0, d)) * 0.42); }',
-      }),
+    const blobMaterial = new ShaderMaterial(
+      BLOB,
+      stage(),
+      { vertex: BLOB, fragment: BLOB },
+      {
+        attributes: ['position', 'uv'],
+        uniforms: ['worldViewProjection'],
+        needAlphaBlending: true,
+      },
     );
-    this.shadow.rotation.x = -Math.PI / 2;
+    blobMaterial.alphaMode = Constants.ALPHA_COMBINE;
+    blobMaterial.disableDepthWrite = true;
+    blobMaterial.backFaceCulling = false;
+    blobMaterial.fogEnabled = false;
+    this.shadow = makeMesh('blobShadow', rotateXGeo(circleGeo(0.72, 18), -Math.PI / 2));
+    this.shadow.material = blobMaterial;
     this.shadow.position.y = 0.03;
-    this.group.add(this.shadow);
+    this.shadow.isPickable = false;
+    this.shadow.parent = this.group;
 
     // One mote per light carried. Never a number.
-    const moteGeo = new THREE.SphereGeometry(0.075, 8, 6);
-    const moteMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(PALETTE.receiveGold),
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
+    const moteGeo = sphereGeo(0.075, 8, 6);
+    const moteMat = makeMoteMaterial(linearColor(PALETTE.receiveGold));
+    const first = makeMesh('lightMote', moteGeo);
+    first.material = moteMat;
     for (let i = 0; i < LIGHT.max; i++) {
-      const mote = new THREE.Mesh(moteGeo, moteMat);
-      mote.visible = false;
+      const mote = i === 0 ? first : first.clone(`lightMote-${String(i)}`);
+      mote.setEnabled(false);
+      mote.isPickable = false;
+      mote.parent = this.motes;
       this.moteMeshes.push(mote);
-      this.motes.add(mote);
     }
-    this.group.add(this.motes);
   }
 
   setPosition(x: number, y: number, z: number): void {
@@ -136,7 +193,7 @@ export class PlayerFigure {
 
   /** The blob shadow is only used when the tier has no real shadows. */
   setBlobShadow(on: boolean): void {
-    this.shadow.visible = on;
+    this.shadow.setEnabled(on);
   }
 
   setFacing(angle: number): void {
@@ -148,10 +205,8 @@ export class PlayerFigure {
     this.glowAmount = clamp01(calm);
     const r =
       PLAYER.glowRadiusMin + (PLAYER.glowRadiusMax - PLAYER.glowRadiusMin) * this.glowAmount;
-    this.glow.scale.setScalar(r);
-    const mat = this.glow.material as THREE.ShaderMaterial;
-    const u = mat.uniforms.uStrength;
-    if (u) u.value = 0.22 + this.glowAmount * 1.5;
+    this.glow.scaling.setAll(r);
+    this.glowMaterial.setFloat('uStrength', 0.22 + this.glowAmount * 1.5);
   }
 
   /**
@@ -161,46 +216,45 @@ export class PlayerFigure {
    * the player breathes at each stone, and a point that is lit stays lit. No
    * other chapter touches them, so they cost one hidden group at the start.
    */
-  private bodyGlows: Map<BodyPoint, THREE.Mesh> | null = null;
+  private bodyGlows: Map<BodyPoint, { mesh: Mesh; material: StandardMaterial }> | null = null;
 
   /** Lights one body point, or dims it. `amount` is 0 to 1. */
   setBodyPoint(point: BodyPoint, amount: number): void {
     if (!this.bodyGlows) this.buildBodyGlows();
-    const mesh = this.bodyGlows?.get(point);
-    if (!mesh) return;
+    const entry = this.bodyGlows?.get(point);
+    if (!entry) return;
     const a = clamp01(amount);
-    mesh.visible = a > 0.01;
-    const mat = mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = a * 0.85;
-    mesh.scale.setScalar(0.1 + a * 0.075);
+    entry.mesh.setEnabled(a > 0.01);
+    entry.material.alpha = a * 0.85;
+    entry.mesh.scaling.setAll(0.1 + a * 0.075);
   }
 
   private buildBodyGlows(): void {
     this.bodyGlows = new Map();
-    const geo = new THREE.SphereGeometry(1, 10, 8);
+    const geo = sphereGeo(1, 10, 8);
     for (const point of BODY_POINTS) {
-      const mesh = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({
-          color: new THREE.Color(PALETTE.receiveGold),
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          fog: false,
-        }),
-      );
+      const material = new StandardMaterial(`bodyGlow-${point}`, stage());
+      material.emissiveColor = linearColor(PALETTE.receiveGold);
+      material.diffuseColor = new Color3(0, 0, 0);
+      material.specularColor = new Color3(0, 0, 0);
+      material.disableLighting = true;
+      material.alpha = 0;
+      material.disableDepthWrite = true;
+      material.fogEnabled = false;
+      material.sideOrientation = FRONT_FACE;
+      const mesh = makeMesh(`bodyGlow-${point}`, geo);
+      mesh.material = material;
       mesh.position.set(0, BODY.heights[point], 0.16);
-      mesh.visible = false;
-      mesh.name = `bodyGlow-${point}`;
-      this.group.add(mesh);
-      this.bodyGlows.set(point, mesh);
+      mesh.isPickable = false;
+      mesh.setEnabled(false);
+      mesh.parent = this.group;
+      this.bodyGlows.set(point, { mesh, material });
     }
   }
 
   setLight(count: number): void {
     for (let i = 0; i < this.moteMeshes.length; i++) {
-      const mote = this.moteMeshes[i];
-      if (mote) mote.visible = i < count;
+      this.moteMeshes[i]?.setEnabled(i < count);
     }
   }
 
@@ -210,7 +264,7 @@ export class PlayerFigure {
   update(dt: number, groundY: number, speed = 0): void {
     this.animateWalk(dt, speed);
     this.moteTime += dt;
-    const visible = this.moteMeshes.filter((m) => m.visible).length;
+    const visible = this.moteMeshes.filter((m) => m.isEnabled(false)).length;
     for (let i = 0; i < visible; i++) {
       const mote = this.moteMeshes[i];
       if (!mote) continue;
@@ -221,7 +275,7 @@ export class PlayerFigure {
         1.0 + tilt + Math.sin(a * 2) * 0.12,
         Math.sin(a) * LIGHT.moteOrbitRadius,
       );
-      mote.scale.setScalar(0.85 + Math.sin(this.moteTime * 2.4 + i) * 0.16);
+      mote.scaling.setAll(0.85 + Math.sin(this.moteTime * 2.4 + i) * 0.16);
     }
     this.shadow.position.y = groundY - this.group.position.y + 0.04;
   }
@@ -277,7 +331,12 @@ export class PlayerFigure {
   }
 
   /** Where a light mote should fly to. */
-  chestWorld(target: THREE.Vector3): THREE.Vector3 {
+  chestWorld(target: Vector3): Vector3 {
     return target.set(this.group.position.x, this.group.position.y + 1.05, this.group.position.z);
+  }
+
+  /** Every mesh the figure is made of, so shadows can be turned on for them. */
+  castingMeshes(): Mesh[] {
+    return this.body.getChildMeshes(false).filter((m): m is Mesh => m instanceof Mesh);
   }
 }

@@ -1,15 +1,19 @@
-import * as THREE from 'three';
-import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { LAYOUT, WORLD } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import { clamp, clamp01, fbm2d, smoothstep } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import { planeGeo, rotateXGeo, computeVertexNormals } from '../render/geometry';
+import {
+  Color3,
+  group,
+  linearColor,
+  mesh as makeMesh,
+  mixColor,
+  setVertexColors,
+} from '../render/scene3d';
+import { HeightField } from './heightField';
+import type { Group } from '../render/scene3d';
 import type { TerrainResult } from './place';
-
-// three-mesh-bvh drives both the ground checks and the prop collision.
-THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
-THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 /** The path wanders gently through the valley instead of running straight. */
 export function pathCenterX(z: number): number {
@@ -166,8 +170,8 @@ export function borderAmount(x: number, z: number): number {
 }
 
 /**
- * Builds the valley as one heightfield. Triangles inside the gap are left out,
- * so the ground raycast finds nothing there and the player cannot walk across
+ * Builds the valley as one heightfield. Quads inside the gap are left out,
+ * so the ground check finds nothing there and the player cannot walk across
  * until the bridge is built.
  */
 export function buildTerrain(): TerrainResult {
@@ -182,14 +186,16 @@ export function buildTerrain(): TerrainResult {
   const colors: number[] = [];
   const indices: number[] = [];
   const cols = segX + 1;
+  const heights = new Float32Array(cols * (segZ + 1));
+  const solid = new Uint8Array(segX * segZ);
 
-  const green = new THREE.Color(PALETTE.growthGreen);
-  const deep = new THREE.Color(PALETTE.deepGreen);
-  const violet = new THREE.Color(PALETTE.farHillsViolet);
-  const earth = new THREE.Color(0xa08a68);
-  const meadow = new THREE.Color(PALETTE.growthGreen).lerp(new THREE.Color(0xd6e07a), 0.4);
-  const straw = new THREE.Color(0xc9b478);
-  const tmp = new THREE.Color();
+  const green = linearColor(PALETTE.growthGreen);
+  const deep = linearColor(PALETTE.deepGreen);
+  const violet = linearColor(PALETTE.farHillsViolet);
+  const earth = linearColor(0xa08a68);
+  const meadow = mixColor(linearColor(PALETTE.growthGreen), linearColor(0xd6e07a), 0.4);
+  const straw = linearColor(0xc9b478);
+  const tmp = new Color3();
 
   for (let iz = 0; iz <= segZ; iz++) {
     for (let ix = 0; ix <= segX; ix++) {
@@ -197,28 +203,32 @@ export function buildTerrain(): TerrainResult {
       const z = minZ + (iz / segZ) * depth;
       const y = terrainHeight(x, z);
       positions.push(x, y, z);
+      heights[iz * cols + ix] = y;
 
       // Light is baked into the vertex colours instead of a shadow map.
       const slope = terrainHeight(x + 1, z) - y;
       const shade = clamp(0.56 + slope * 0.5 + fbm2d(x * 0.07, z * 0.07, 3, 21) * 0.3, 0.46, 1);
       const height01 = clamp01((y + 2) / 16);
-      tmp.copy(deep).lerp(green, clamp01(1.15 - height01 * 1.4));
-      tmp.lerp(violet, clamp01((height01 - 0.45) * 1.6));
+      lerpTo(tmp, deep, green, clamp01(1.15 - height01 * 1.4));
+      lerpTo(tmp, tmp, violet, clamp01((height01 - 0.45) * 1.6));
 
       // Patches. A single flat green reads as a plane no matter how it is lit,
       // so the ground carries broad drifts of lighter and drier growth on top
       // of finer mottling. This is the cheapest way to make ground look like
       // ground: it costs nothing at run time, only vertex colours.
       const drift = fbm2d(x * 0.035 + 11, z * 0.035 + 7, 3, 43);
-      tmp.lerp(meadow, clamp01((drift - 0.42) * 1.9));
+      lerpTo(tmp, tmp, meadow, clamp01((drift - 0.42) * 1.9));
       const dry = fbm2d(x * 0.021 + 61, z * 0.021 + 29, 2, 77);
-      tmp.lerp(straw, clamp01((dry - 0.58) * 1.7) * 0.75);
+      lerpTo(tmp, tmp, straw, clamp01((dry - 0.58) * 1.7) * 0.75);
       const mottle = 0.9 + fbm2d(x * 0.55, z * 0.55, 2, 91) * 0.22;
 
-      tmp.multiplyScalar(shade * mottle);
+      const lit = shade * mottle;
+      tmp.r *= lit;
+      tmp.g *= lit;
+      tmp.b *= lit;
       // The walked track shows the earth under the grass.
       const track = pathAmount(x, z);
-      if (track > 0) tmp.lerp(earth, track * 0.85);
+      if (track > 0) lerpTo(tmp, tmp, earth, track * 0.85);
       colors.push(tmp.r, tmp.g, tmp.b);
     }
   }
@@ -229,6 +239,7 @@ export function buildTerrain(): TerrainResult {
       const z = minZ + (iz / segZ) * depth;
       // Leave the gap open. No ground means the player cannot cross it.
       if (inGap(x, z) || inGap(x + width / segX, z + depth / segZ)) continue;
+      solid[iz * segX + ix] = 1;
       const a = iz * cols + ix;
       const b = a + 1;
       const c = a + cols;
@@ -237,22 +248,40 @@ export function buildTerrain(): TerrainResult {
     }
   }
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  geo.computeBoundsTree();
-
+  const geo = computeVertexNormals({
+    positions,
+    normals: [],
+    uvs: new Array<number>(cols * (segZ + 1) * 2).fill(0),
+    indices,
+  });
+  const mesh = makeMesh('terrain', geo);
+  setVertexColors(mesh, colors);
   // A low rim on the ground: enough to catch the hill edges against the sky,
   // not so much that the whole meadow glows.
-  const material = worldMaterial({ vertexColors: true, rim: 0.07 });
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.name = 'terrain';
-  mesh.matrixAutoUpdate = false;
-  mesh.updateMatrix();
+  mesh.material = worldMaterial({ rim: 0.07 });
+  mesh.isPickable = false;
+  mesh.receiveShadows = true;
+  mesh.freezeWorldMatrix();
 
-  return { mesh, extras: [buildChasm()], colliders: [mesh] };
+  const field = new HeightField(
+    -WORLD.halfWidth,
+    minZ,
+    width / segX,
+    depth / segZ,
+    segX,
+    segZ,
+    heights,
+    solid,
+  );
+
+  return { mesh, extras: [buildChasm()], surface: field.sampler() };
+}
+
+/** Mixes two colours into a third. Kept here so the terrain loop makes no garbage. */
+function lerpTo(out: Color3, a: Color3, b: Color3, t: number): void {
+  out.r = a.r + (b.r - a.r) * t;
+  out.g = a.g + (b.g - a.g) * t;
+  out.b = a.b + (b.b - a.b) * t;
 }
 
 /**
@@ -261,10 +290,9 @@ export function buildTerrain(): TerrainResult {
  * far below. Each wall stops at the ground height above it, so no wall ever
  * sticks up out of the valley floor.
  */
-function buildChasm(): THREE.Group {
+function buildChasm(): Group {
   const g = LAYOUT.gap;
-  const group = new THREE.Group();
-  group.name = 'chasm';
+  const chasm = group('chasm');
   const cx = (g.x0 + g.x1) / 2;
   const cz = (g.z0 + g.z1) / 2;
   const width = g.x1 - g.x0;
@@ -272,19 +300,20 @@ function buildChasm(): THREE.Group {
   const floorY = -12;
 
   // Everything down here sits in shadow, so the colours stay very dark.
-  const rock = new THREE.Color(PALETTE.blockage).multiplyScalar(0.12);
-  const wallMat = worldMaterial({ color: rock, rim: 0.02 });
+  const rock = linearColor(PALETTE.blockage).scale(0.12);
+  const wallMat = worldMaterial({ color: rock, rim: 0.02, doubleSided: true });
 
-  const floorGeo = new THREE.PlaneGeometry(width + 2, depth + 2, 6, 6);
-  floorGeo.rotateX(-Math.PI / 2);
-  const pos = floorGeo.getAttribute('position');
-  for (let i = 0; i < pos.count; i++) {
-    pos.setY(i, floorY + fbm2d(pos.getX(i) * 0.2, pos.getZ(i) * 0.2, 2, 5) * 2);
+  const floorGeo = rotateXGeo(planeGeo(width + 2, depth + 2, 6, 6), -Math.PI / 2);
+  for (let i = 0; i < floorGeo.positions.length; i += 3) {
+    floorGeo.positions[i + 1] =
+      floorY +
+      fbm2d((floorGeo.positions[i] ?? 0) * 0.2, (floorGeo.positions[i + 2] ?? 0) * 0.2, 2, 5) * 2;
   }
-  floorGeo.computeVertexNormals();
-  const floor = new THREE.Mesh(floorGeo, wallMat);
+  computeVertexNormals(floorGeo);
+  const floor = makeMesh('chasmFloor', floorGeo);
+  floor.material = wallMat;
   floor.position.set(cx, 0, cz);
-  group.add(floor);
+  floor.parent = chasm;
 
   // Four walls, each reaching up to the ground height at its own edge.
   const walls: [number, number, number, number][] = [
@@ -295,11 +324,16 @@ function buildChasm(): THREE.Group {
   ];
   for (const [span, x, z, rotY] of walls) {
     const top = terrainHeight(x, z) + 0.2;
-    const height = top - floorY;
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(span, height), wallMat);
-    wall.position.set(x, floorY + height / 2, z);
+    const wallHeight = top - floorY;
+    const wall = makeMesh('chasmWall', planeGeo(span, wallHeight));
+    wall.material = wallMat;
+    wall.position.set(x, floorY + wallHeight / 2, z);
     wall.rotation.y = rotY;
-    group.add(wall);
+    wall.parent = chasm;
   }
-  return group;
+  for (const m of chasm.getChildMeshes(false)) {
+    m.isPickable = false;
+    m.receiveShadows = true;
+  }
+  return chasm;
 }

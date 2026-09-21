@@ -8,8 +8,8 @@ Completion report. Everything in this report was measured on this machine.
 
 ### M0 Setup
 
-Vite, TypeScript in strict mode, Three.js, `three-mesh-bvh`, ESLint, Prettier,
-Vitest and Playwright. `CLAUDE.md` in the project root holds the content rules,
+Vite, TypeScript in strict mode, a 3D engine (Three.js at first, Babylon.js
+since — see section C3), ESLint, Prettier, Vitest and Playwright. `CLAUDE.md` in the project root holds the content rules,
 the stack, the performance budget and the art rules, so later chapters follow
 the same rules. Debug URL parameters work: `?debug=1`, `?scene=N`,
 `?autobreathe=1`, plus two I added (see section 5).
@@ -18,7 +18,7 @@ All player-facing text lives in `src/content/strings.en.ts` behind a
 `GameStrings` interface and a `LOCALES` map. A German file is one new file plus
 one line in that map. All tunable numbers live in `src/content/chapter1.ts`.
 The six logic systems (breath, calm, light, transform, manifest, checks) import
-no Three.js at all, so they run in plain Vitest.
+nothing from the engine at all, so they run in plain Vitest.
 
 ### M1 World
 
@@ -27,12 +27,13 @@ at scene 3, a narrow pinch at scene 4 and a side path at scene 5. Soft borders:
 the hills rise and the mist thickens, and the player is turned back gently.
 There are no invisible walls.
 
-The gap at scene 5 is a real hole in the terrain mesh. The ground raycast finds
+The gap at scene 5 is a real hole in the terrain mesh. The ground check finds
 nothing there, so the player cannot cross until the bridge exists. The bridge
-deck becomes a collider once it has risen.
+deck carries the player once it has risen.
 
-`three-mesh-bvh` drives the ground height, the slope limit and prop collision.
-Walking into a rock slides along it instead of stopping dead.
+The ground height, the slope limit and prop collision all read the heightfield
+the terrain was built from, so the answer is the height of the very triangle
+that is drawn. Walking into a rock slides along it instead of stopping dead.
 
 Props, all procedural: rounded rocks, stylised trees (a trunk plus clustered
 soft blobs), stone spring basins, the carved sign stone, the arched bridge.
@@ -154,7 +155,7 @@ All in `screenshots/`, one set per scene, desktop 1280 x 720 and mobile
 | Apply               | `after3-apply-desktop.png`         | `after3-apply-mobile.png`         |
 | Chapter end         | `after4-chapter-end-desktop.png`   | `after4-chapter-end-mobile.png`   |
 
-*Updated for chapter 2:* the closing questions moved to the end of the last
+_Updated for chapter 2:_ the closing questions moved to the end of the last
 chapter in the build, so chapter 1 goes from Apply straight to its end screen,
 and that screen now offers the walk on into chapter 2. The old
 `after4-end-questions` and `after5-chapter-end` files are gone.
@@ -451,10 +452,11 @@ useful thing to come out of this project so far.
    a debug way to try a mind seed now, so you can feel whether the
    two-times-faster-then-fades behaviour reads the way you meant it?
 
-   *Answered by chapter 2.* The mind seed is switched on there, and `?calm=0.2`
+   _Answered by chapter 2._ The mind seed is switched on there, and `?calm=0.2`
    forces one. See the chapter 2 report below.
 
 ---
+
 ---
 
 # Light Within — chapter 2 "Be aware"
@@ -622,36 +624,37 @@ All written by `npm run e2e` into `screenshots/`. Each is taken twice: desktop
 (1280 × 720) and mobile (Pixel 7, 390 × 844). The file names end in `-desktop`
 or `-mobile`.
 
-| Scene | File |
-| --- | --- |
-| 1 Over the bridge, the meadows | `c2-scene1-meadows-*.png` |
-| 2 The four body stones | `c2-scene2-body-stones-*.png` |
-| 3 The rain cloud, with the naming panel | `c2-scene3-rain-*.png` |
-| 3 The rainbow, when the rain lets go | `c2-scene3-rainbow-*.png` |
-| 4a The singing stone | `c2-scene4a-singing-stone-*.png` |
-| 4 The storm ridge | `c2-scene4-storm-*.png` |
-| 5 Two seeds | `c2-scene5-seeds-*.png` |
-| 6 Night | `c2-scene6-night-*.png` |
-| The dream | `c2-dream-*.png` |
-| The end screen | `c2-end-*.png` |
+| Scene                                   | File                             |
+| --------------------------------------- | -------------------------------- |
+| 1 Over the bridge, the meadows          | `c2-scene1-meadows-*.png`        |
+| 2 The four body stones                  | `c2-scene2-body-stones-*.png`    |
+| 3 The rain cloud, with the naming panel | `c2-scene3-rain-*.png`           |
+| 3 The rainbow, when the rain lets go    | `c2-scene3-rainbow-*.png`        |
+| 4a The singing stone                    | `c2-scene4a-singing-stone-*.png` |
+| 4 The storm ridge                       | `c2-scene4-storm-*.png`          |
+| 5 Two seeds                             | `c2-scene5-seeds-*.png`          |
+| 6 Night                                 | `c2-scene6-night-*.png`          |
+| The dream                               | `c2-dream-*.png`                 |
+| The end screen                          | `c2-end-*.png`                   |
 
 ---
+
 ## C2.3 Test results
 
 ### Unit tests, Vitest
 
 166 tests in 14 files, all passing. 68 of them are new for chapter 2.
 
-| File | Tests | What it holds |
-| --- | --- | --- |
-| `weather.test.ts` | 17 | Follow rule, naming, intensity caps, the tone rule per feeling |
-| `seeds2.test.ts` | 15 | Heart and mind seeds, growth, fade, return, the light well |
-| `storm.test.ts` | 11 | The five steps, the order, five tones, running and pushing |
-| `soundBreath.test.ts` | 9 | Unlock, calm and length, the pentatonic row, the near miss |
-| `body.test.ts` | 9 | Four stones, the fixed order, the silhouette, the timing |
-| `router.test.ts` | 7 | Which chapter opens, and what a hand-over carries |
-| `save.test.ts` | 22 | Per-chapter save, version 1 migration, unlocking, the closing questions |
-| The chapter 1 files | 76 | Unchanged, still passing |
+| File                  | Tests | What it holds                                                           |
+| --------------------- | ----- | ----------------------------------------------------------------------- |
+| `weather.test.ts`     | 17    | Follow rule, naming, intensity caps, the tone rule per feeling          |
+| `seeds2.test.ts`      | 15    | Heart and mind seeds, growth, fade, return, the light well              |
+| `storm.test.ts`       | 11    | The five steps, the order, five tones, running and pushing              |
+| `soundBreath.test.ts` | 9     | Unlock, calm and length, the pentatonic row, the near miss              |
+| `body.test.ts`        | 9     | Four stones, the fixed order, the silhouette, the timing                |
+| `router.test.ts`      | 7     | Which chapter opens, and what a hand-over carries                       |
+| `save.test.ts`        | 22    | Per-chapter save, version 1 migration, unlocking, the closing questions |
+| The chapter 1 files   | 76    | Unchanged, still passing                                                |
 
 The rules the brief asked for by name are each a test:
 
@@ -670,17 +673,17 @@ The rules the brief asked for by name are each a test:
 
 Every one runs twice, on desktop (1280 × 720) and on a Pixel 7 (390 × 844).
 
-| Test | Result |
-| --- | --- |
-| Chapter 2 from the meadows to the end screen | passes |
+| Test                                                          | Result |
+| ------------------------------------------------------------- | ------ |
+| Chapter 2 from the meadows to the end screen                  | passes |
 | A low calm plants a mind seed, and the chapter still finishes | passes |
-| The light well gives light only while the player is short | passes |
-| The naming panel opens, and never says wrong | passes |
-| The start screen lists and locks the chapters | passes |
-| Finishing chapter 1 unlocks and opens chapter 2 | passes |
-| Chapter 2 starts with its own light | passes |
-| No request to any outside origin, in every chapter 2 scene | passes |
-| All chapter 1 tests | pass |
+| The light well gives light only while the player is short     | passes |
+| The naming panel opens, and never says wrong                  | passes |
+| The start screen lists and locks the chapters                 | passes |
+| Finishing chapter 1 unlocks and opens chapter 2               | passes |
+| Chapter 2 starts with its own light                           | passes |
+| No request to any outside origin, in every chapter 2 scene    | passes |
+| All chapter 1 tests                                           | pass   |
 
 **80 of 80 browser tests pass**, on desktop and on mobile, in one clean run
 that takes about an hour and a quarter on this machine.
@@ -698,12 +701,12 @@ distance means the same thing at any frame rate.
 
 ### Bundle size
 
-| File | Bytes | Gzipped |
-| --- | --- | --- |
-| `index.js` | 787,858 | 209,086 |
-| `index.css` | 8,553 | — |
-| Two font files | 380,220 | — |
-| **Everything in `dist/`** | **1,218,172** | — |
+| File                      | Bytes         | Gzipped |
+| ------------------------- | ------------- | ------- |
+| `index.js`                | 787,858       | 209,086 |
+| `index.css`               | 8,553         | —       |
+| Two font files            | 380,220       | —       |
+| **Everything in `dist/`** | **1,218,172** | —       |
 
 The budget is 6 MB for the first download and 15 MB in total. Chapter 2 added
 about 51 kB of JavaScript and no assets at all, because the meadows, the
@@ -774,7 +777,7 @@ walk when they stop playing.
 
 **Night fall stalled the renderer.** `setNight` re-filtered the sky into the
 environment map on every call, and night falls over eight seconds, so that was
-one full PMREM pass per frame. The frame rate went to zero and night stopped at
+one full filtering pass per frame. The frame rate went to zero and night stopped at
 0.66. It now refreshes in steps of 0.12, the same way the colour drift does.
 This would have been much worse on a real device than it was here, because here
 it only cost a stalled test.
@@ -879,6 +882,224 @@ it only cost a stalled test.
    first?
 
 ---
+
+---
+
+# C3 The move to Babylon.js
+
+The game was built on Three.js. It now runs on Babylon.js. Nothing else was
+meant to change, and the test for that was not an opinion: the old revision
+was built in a git worktree, served on a second port, and the two were opened
+side by side at the same address, on the same machine, in the same second.
+`tools/ab.mjs` does that and prints the average brightness of five regions of
+the picture and the real frame rate for each. Every number below came out of
+it.
+
+## C3.1 What moved
+
+| Was                                             | Is now                                                                              |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `THREE.WebGLRenderer`, `THREE.Scene`            | Babylon `Engine` and `Scene`, right-handed so every position and angle is unchanged |
+| `MeshStandardMaterial` + `onBeforeCompile`      | `PBRMaterial` + a `MaterialPluginBase`, injecting at the engine's own hook points   |
+| `EffectComposer` + two `ShaderPass`             | Two Babylon `PostProcess` passes on the camera                                      |
+| `PMREMGenerator` over a second sky              | A `ReflectionProbe` that draws the sky into a small cube                            |
+| `three-mesh-bvh` raycast for the ground         | The heightfield the terrain was built from, read directly                           |
+| `InstancedBufferGeometry` grass                 | Thin instances of one card, with one extra per-blade buffer                         |
+| 320 cloned tree groups                          | Thin instances of fourteen originals                                                |
+| `THREE.PerspectiveCamera` inside `FollowCamera` | `FollowCamera` holds only maths; the game copies it onto a `TargetCamera`           |
+| Three's primitive geometries                    | `src/render/geometry.ts`, generating the same shapes                                |
+
+The chapter flow, the systems, the UI, the audio, the save format and every
+tunable number are untouched. `src/chapter1.ts` and `src/chapter2.ts` changed
+by four lines each, all of them an import.
+
+## C3.2 The two faults that cost the most
+
+**Front faces.** Babylon defaults a mesh to clockwise front faces. The world
+is right-handed and every shape it is made of winds counter-clockwise, so
+every surface in the game was being culled the wrong way round. Closed shapes
+survive that almost invisibly — a sphere seen from the inside is still a
+sphere, only lit from the wrong side — but the valley floor is not closed, and
+it simply was not there. What was on screen was the clear colour, which is the
+same pale grey as the sky, so it read as a hazy, over-exposed valley rather
+than as a missing one. It took a red clear colour to prove that the ground was
+absent rather than pale. `FRONT_FACE` in `src/render/scene3d.ts` is now set on
+every mesh built there and on every material that culls, and the reason is
+written next to it.
+
+**The sky light stopped following the sky.** The light a surface receives from
+every direction at once is worked out from the sky cube and then cached, and
+Babylon does not throw that cache away when the cube is drawn again. Night
+fell, the sky went dark blue and filled with stars, the mountains went dark —
+and the meadow went on being lit by a grey morning. The night scene measured
+0.36 average brightness against the old build's 0.14. The cube is now asked to
+work it out again on the frame after it has been drawn, so it reads the new
+sky. It is also only 64 pixels a side, because working it out means reading
+the cube back off the graphics card, and what is taken from it is very smooth.
+
+Neither fault would have been found by reading the code. Both were found by
+putting the two builds next to each other.
+
+## C3.3 What the side-by-side says now
+
+Average brightness of the picture, Babylon first, Three second. Same address,
+same machine, same seed.
+
+| Scene                        | all           | ground        | mid           | trees         | sky           |
+| ---------------------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
+| ch1 scene 1, the waking mist | 0.643 / 0.646 | 0.588 / 0.595 | 0.714 / 0.704 | 0.508 / 0.516 | 0.765 / 0.765 |
+| ch1 scene 3, the wide field  | 0.367 / 0.372 | 0.354 / 0.351 | 0.393 / 0.404 | 0.151 / 0.169 | 0.659 / 0.661 |
+| ch1 scene 4, the fog         | 0.376 / 0.373 | 0.340 / 0.337 | 0.395 / 0.386 | 0.252 / 0.260 | 0.771 / 0.771 |
+| ch1 scene 6, the bridge      | 0.302 / 0.314 | 0.341 / 0.340 | 0.197 / 0.208 | 0.257 / 0.271 | 0.771 / 0.771 |
+| ch2 scene 2, the body stones | 0.338 / 0.342 | 0.298 / 0.292 | 0.334 / 0.332 | 0.252 / 0.264 | 0.600 / 0.602 |
+| ch2 scene 6, night           | 0.126 / 0.138 | 0.089 / 0.103 | 0.186 / 0.203 | 0.104 / 0.105 | 0.130 / 0.137 |
+
+Nothing is out by more than two hundredths, which on a 0 to 1 scale is about
+four steps of an eight-bit grey. The tree corner sits about a hundredth dark
+in every scene: that corner is the dark canopy against the sky, and the light
+filling the shaded underside of a leaf comes from the sky cube, which Babylon
+and Three work out by different means. It is below what anyone will see and I
+left it rather than bending a number to hide it.
+
+Two things were found by this table rather than by looking, and both were
+wrong in a way I would have called "close enough" from a screenshot.
+
+The **middle band** was three hundredths low everywhere: that band is where
+the distance haze does its work, and the engine's own fog ramps straight and
+measures distance from the eye, while the original eased in and out and
+measured depth into the screen. The world materials now do the haze
+themselves, so the curve and the depth are the ones the valley was built
+with. It barely moved the average — which is the point: it was never an
+average, it was a hill starting to haze at a hard line and the corners of the
+frame hazing more than the middle.
+
+The **waking mist** was five hundredths thin, and the trees behind it nearly
+two tenths. The fog on the path and the mist the player wakes in look like the
+same effect and are not: one thins away from its middle, the other holds
+together much further out. I had merged them into one shader on one curve. At
+the halfway angle that curve gave 0.34 where the mist wanted 0.62, so the
+first thing the player ever sees was half as thick as it should be. Both
+curves are back.
+
+The one number that needed setting by hand was the sun. Babylon and Three do
+not scale a directional light the same way, and there is no conversion worth
+trusting between them, so it was measured: `LIGHTING.sunIntensity` is 2.1
+because that is where the ground, the middle band and the trees all landed on
+the old build's readings at once.
+
+## C3.4 What got cleaner
+
+**One dependency fewer, and a faster answer.** The ground check no longer
+fires a ray at the terrain mesh. The terrain is a grid of quads the game
+generated itself, so `HeightField` reads back the very triangle that is drawn,
+in constant time, with nothing to build and nothing to keep in step.
+`three-mesh-bvh` is gone. The bridge deck is an arch of known shape and
+answers for itself the same way. The ground, the slope limit and the collision
+slide all run several times per simulation step, so this is the hottest path
+in the game.
+
+**The grey-to-colour system is no longer string surgery.** It was a set of
+`onBeforeCompile` replacements that had to find `#include <color_fragment>` in
+Three's shader and paste around it. It is now a material plugin that declares
+its own uniform block and hands code to the engine's own injection points. It
+also lost a varying: Babylon's shader already carries the world position, so
+the vertex stage needed no change at all.
+
+**Every shape is in one file.** `src/render/geometry.ts` generates the plane,
+disc, ring, sphere, box, cylinder, cone, torus, icosahedron, capsule and lathe
+the world is made of. That was not done to avoid the engine's own builders but
+because three shaders read texture coordinates that the builders lay out
+differently — the rainbow across its arc, the tone ring across its band, the
+blob shadow out from its middle — and a shape whose coordinates run the other
+way is a different picture, not a different mesh library.
+
+**The camera is testable again.** `FollowCamera` holds no engine object now.
+It works out where the eye should be and what it should look at, and the game
+copies those two points onto the camera that draws. The basis tests run in
+plain Vitest with no canvas, which is what they were always trying to be.
+
+## C3.5 What got faster
+
+The wood was 320 cloned tree groups of about ten parts each: roughly three
+thousand objects to place, cull, sort and draw one at a time, every frame.
+Fourteen originals are now built and every tree on the hillside is a thin
+instance of their parts, so the whole wood costs about what the originals
+cost. The grass went the same way: one card, sixty thousand thin instances,
+and the tier still decides how many are drawn.
+
+It shows. Before that change the top tier measured 0.6 frames per second here
+against the old build's 1.2 — half speed. After it, on the same machine and in
+the same minute:
+
+| Tier                     | Babylon | Three |
+| ------------------------ | ------- | ----- |
+| high                     | 0.56    | 0.44  |
+| medium                   | 0.89    | 0.78  |
+| low                      | 2.00    | 1.78  |
+| low, painting filter off | 2.00    | 2.33  |
+
+These are SwiftShader numbers on a shared machine running two servers and a
+browser, so they are well below the figures in section 4 and they wander by
+about a third between runs. They are worth exactly one thing: the two builds
+are in the same place, and they were not before.
+
+## C3.6 What it costs to download
+
+| Measured in the browser, uncompressed | Three     | Babylon   |
+| ------------------------------------- | --------- | --------- |
+| JavaScript                            | 709,461   | 1,693,983 |
+| CSS                                   | 7,096     | 8,628     |
+| `index.html`                          | 575       | 1,758     |
+| The two Work Sans fonts               | 380,220   | 380,220   |
+| **Initial download**                  | 1,097,352 | 2,084,671 |
+
+**The budget is 6 MB initial and 15 MB total. Both are still met with room.**
+
+It did nearly double, and that is worth saying plainly rather than burying:
+the game used a thin slice of Three.js and uses a thicker slice of Babylon.
+About 350 KB of the growth is shader source that Babylon ships as code — the
+physically based fragment shader alone is 133 KB — and which a build cannot
+tree-shake away because the engine assembles it at run time. Gzipped, as a
+static host serves it, that is roughly 500 KB against 390 KB.
+
+Nothing was added to the download that is not engine. There are still no
+model, image or audio files, and `npm run build` still writes a `dist/` that
+any static host can serve with no server behind it.
+
+## C3.7 What got better to look at
+
+One thing, and it is tier-gated. On the top tier the sun's shadow now hardens
+at the point where a thing touches the ground and softens as it stands away
+from it, which is what an outdoor shadow does and what the old one could not
+do. The middle tier keeps the cheaper filtered edge and the low tier keeps the
+blob, exactly as before. `SHADOW.contactHardeningFrom` is the switch.
+
+**I could not measure what it costs.** On this machine the top tier reads
+between 0.5 and 0.8 frames per second with it and between 0.5 and 0.75
+without, which is noise. On a real graphics card it is a real cost and a small
+one, but that is a claim about hardware I do not have. The tier it sits in is
+only chosen on a device that measured fast, and the watchdog can still step
+down off it, so the risk is bounded — but it is a risk and not a measurement.
+
+**No outside assets were added.** The brief allows them where they raise the
+quality, under a licence that permits commercial use without attribution and
+bundled rather than fetched. Nothing in this world wants a texture or a model:
+the art direction is procedural geometry, vertex-baked light and a painting
+filter, and the one thing a bought asset would have improved — surface detail
+— is deliberately absent. Adding one would have been a change to the art
+direction dressed up as a technical improvement.
+
+## C3.8 What this migration did not fix
+
+The frame rate targets are still unverified, for the same reason as before:
+this machine has no graphics card. The Babylon build is now level with the
+Three build here, which means it is probably level with it there, but "level
+with the thing that was also never measured on real hardware" is all that can
+honestly be said. The device report and safe mode both still work and are
+still the way to find out.
+
+---
+
 ---
 
 # Mobile

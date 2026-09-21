@@ -1,34 +1,32 @@
-import * as THREE from 'three';
 import { PLAYER } from '../content/chapter1';
 import { height } from './place';
-
-const RAY_HEIGHT = 60;
+import type { SurfaceSampler } from './place';
 
 /**
- * Ground and collision checks. Raycasts run against the three-mesh-bvh trees on
- * the terrain and on any extra collider, for example the finished bridge.
+ * Ground and collision checks.
+ *
+ * Every surface the player can stand on answers one question: how high is
+ * the ground here, and is there any. The terrain answers from the heightfield
+ * it was built from; the bridge answers from its own arch. They are asked in
+ * order, so the ground wins wherever there is ground and the bridge only
+ * carries the player over the hole where there is none.
  */
 export class Ground {
-  private readonly raycaster = new THREE.Raycaster();
-  private readonly origin = new THREE.Vector3();
-  private readonly down = new THREE.Vector3(0, -1, 0);
-  private readonly colliders: THREE.Mesh[] = [];
+  private readonly surfaces: SurfaceSampler[] = [];
   /** Obstacles the player cannot walk through, as circles on the floor. */
   private readonly blockers: { x: number; z: number; radius: number }[] = [];
 
-  constructor(colliders: THREE.Mesh[] = []) {
-    this.colliders.push(...colliders);
-    this.raycaster.firstHitOnly = true;
-    this.raycaster.far = RAY_HEIGHT * 2;
+  constructor(surfaces: SurfaceSampler[] = []) {
+    this.surfaces.push(...surfaces);
   }
 
-  addCollider(mesh: THREE.Mesh): void {
-    if (!this.colliders.includes(mesh)) this.colliders.push(mesh);
+  addSurface(surface: SurfaceSampler): void {
+    if (!this.surfaces.includes(surface)) this.surfaces.push(surface);
   }
 
-  removeCollider(mesh: THREE.Mesh): void {
-    const i = this.colliders.indexOf(mesh);
-    if (i >= 0) this.colliders.splice(i, 1);
+  removeSurface(surface: SurfaceSampler): void {
+    const i = this.surfaces.indexOf(surface);
+    if (i >= 0) this.surfaces.splice(i, 1);
   }
 
   addBlocker(x: number, z: number, radius: number): void {
@@ -41,12 +39,9 @@ export class Ground {
 
   /** Ground height at a point, or null when there is no ground, such as the gap. */
   heightAt(x: number, z: number): number | null {
-    this.origin.set(x, RAY_HEIGHT, z);
-    this.raycaster.set(this.origin, this.down);
-    for (const mesh of this.colliders) {
-      const hits = this.raycaster.intersectObject(mesh, false);
-      const hit = hits[0];
-      if (hit) return hit.point.y;
+    for (const surface of this.surfaces) {
+      const y = surface(x, z);
+      if (y !== null) return y;
     }
     return null;
   }

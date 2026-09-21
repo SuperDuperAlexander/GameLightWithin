@@ -1,19 +1,127 @@
-import * as THREE from 'three';
+import { Constants } from '@babylonjs/core/Engines/constants';
+import { Effect } from '@babylonjs/core/Materials/effect';
+import { Material } from '@babylonjs/core/Materials/material';
+import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Vector2, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { PALETTE } from '../content/palette';
 import { clamp01, makeRng } from '../core/math';
 import { worldMaterial } from '../render/materials';
+import { circleGeo, coneGeo, sphereGeo } from '../render/geometry';
+import type { Group } from '../render/scene3d';
+import {
+  FRONT_FACE,
+  group,
+  linearColor,
+  mesh as makeMesh,
+  mixColor,
+  stage,
+} from '../render/scene3d';
 import { buildTree } from './props';
 
-const GOLD = new THREE.Color(PALETTE.receiveGold);
+const GOLD = linearColor(PALETTE.receiveGold);
+const HALO = 'lwHalo';
 
 /** A small additive point of light. Used for every mote in the game. */
-export function makeMoteMaterial(color: THREE.Color): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
+export function makeMoteMaterial(color: Color3): StandardMaterial {
+  const material = new StandardMaterial('mote', stage());
+  material.emissiveColor = color;
+  material.diffuseColor = new Color3(0, 0, 0);
+  material.specularColor = new Color3(0, 0, 0);
+  material.disableLighting = true;
+  material.alphaMode = Constants.ALPHA_ADD;
+  material.alpha = 1;
+  material.disableDepthWrite = true;
+  material.fogEnabled = false;
+  material.sideOrientation = FRONT_FACE;
+  // A mote is fully opaque light: its alpha is 1 and it is added to what is
+  // behind it. The engine works out on its own whether a surface needs
+  // blending, and a surface at full alpha does not, so it is told.
+  material.needAlphaBlending = (): boolean => true;
+  return material;
+}
+
+/**
+ * A halo: a sphere seen from the inside, brightest at its silhouette.
+ *
+ * Only the far side of the sphere is drawn, so the glow reads as light
+ * gathered behind whatever it surrounds rather than as a bubble over it.
+ */
+Effect.ShadersStore[`${HALO}VertexShader`] = /* glsl */ `
+  precision highp float;
+  attribute vec3 position;
+  attribute vec3 normal;
+  uniform mat4 world;
+  uniform mat4 viewProjection;
+  uniform vec3 cameraPosition;
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    vec4 w = world * vec4(position, 1.0);
+    vN = normalize(mat3(world[0].xyz, world[1].xyz, world[2].xyz) * normal);
+    vV = normalize(cameraPosition - w.xyz);
+    gl_Position = viewProjection * w;
+  }
+`;
+
+Effect.ShadersStore[`${HALO}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec3 vN;
+  varying vec3 vV;
+  uniform vec3 uColor;
+  uniform float uStrength;
+  uniform float uPower;
+  uniform float uScale;
+  void main() {
+    float rim = 1.0 - abs(dot(normalize(vN), normalize(vV)));
+    // A tight rim keeps the glow a halo and never a solid dome.
+    gl_FragColor = vec4(uColor, pow(rim, uPower) * uStrength * uScale);
+  }
+`;
+
+/** A halo material. `power` sets how tight the rim is, `scale` how strong. */
+function haloMaterial(name: string, color: Color3, power: number, scale: number): ShaderMaterial {
+  const material = new ShaderMaterial(
+    name,
+    stage(),
+    { vertex: HALO, fragment: HALO },
+    {
+      attributes: ['position', 'normal'],
+      uniforms: [
+        'world',
+        'viewProjection',
+        'cameraPosition',
+        'uColor',
+        'uStrength',
+        'uPower',
+        'uScale',
+      ],
+      needAlphaBlending: true,
+    },
+  );
+  material.setColor3('uColor', color);
+  material.setFloat('uStrength', 0);
+  material.setFloat('uPower', power);
+  material.setFloat('uScale', scale);
+  material.alphaMode = Constants.ALPHA_ADD;
+  material.disableDepthWrite = true;
+  material.fogEnabled = false;
+  // The far side of the sphere only.
+  material.sideOrientation = Material.ClockWiseSideOrientation;
+  return material;
+}
+
+/** One pooled mote, plus where it came from and where it is going. */
+interface LiveMote {
+  mesh: Mesh;
+  from: Vector3;
+  rise: Vector3;
+  time: number;
+  duration: number;
+  onArrive: (() => void) | null;
 }
 
 /**
@@ -21,71 +129,66 @@ export function makeMoteMaterial(color: THREE.Color): THREE.MeshBasicMaterial {
  * One pool serves every spring and the fog.
  */
 export class MoteFlow {
-  readonly group = new THREE.Group();
-  private readonly pool: THREE.Mesh[] = [];
-  private readonly live: {
-    mesh: THREE.Mesh;
-    from: THREE.Vector3;
-    rise: THREE.Vector3;
-    time: number;
-    duration: number;
-    onArrive: (() => void) | null;
-  }[] = [];
+  readonly group: Group;
+  private readonly pool: Mesh[] = [];
+  private readonly live: LiveMote[] = [];
+  private readonly a = new Vector3();
+  private readonly b = new Vector3();
 
   constructor(size: number) {
-    const geo = new THREE.SphereGeometry(0.11, 8, 6);
-    const mat = makeMoteMaterial(GOLD);
-    for (let i = 0; i < size; i++) {
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.visible = false;
-      this.pool.push(mesh);
-      this.group.add(mesh);
+    this.group = group('motes');
+    const geo = sphereGeo(0.11, 8, 6);
+    const material = makeMoteMaterial(GOLD);
+    const first = makeMesh('mote', geo);
+    first.material = material;
+    first.setEnabled(false);
+    first.parent = this.group;
+    this.pool.push(first);
+    for (let i = 1; i < size; i++) {
+      const copy = first.clone(`mote-${String(i)}`);
+      copy.setEnabled(false);
+      copy.parent = this.group;
+      this.pool.push(copy);
     }
-    this.group.name = 'motes';
   }
 
   /** Sends one mote from a point to the player. */
-  send(from: THREE.Vector3, duration: number, onArrive: (() => void) | null): void {
-    const mesh = this.pool.find((m) => !m.visible);
+  send(from: Vector3, duration: number, onArrive: (() => void) | null): void {
+    const mesh = this.pool.find((m) => !m.isEnabled(false));
     if (!mesh) {
       onArrive?.();
       return;
     }
-    mesh.visible = true;
-    mesh.position.copy(from);
+    mesh.setEnabled(true);
+    mesh.position.copyFrom(from);
     this.live.push({
       mesh,
       from: from.clone(),
       // It rises first, then curves toward the player.
-      rise: from
-        .clone()
-        .add(
-          new THREE.Vector3(
-            (Math.random() - 0.5) * 1.4,
-            1.9 + Math.random(),
-            (Math.random() - 0.5) * 1.4,
-          ),
-        ),
+      rise: new Vector3(
+        from.x + (Math.random() - 0.5) * 1.4,
+        from.y + 1.9 + Math.random(),
+        from.z + (Math.random() - 0.5) * 1.4,
+      ),
       time: 0,
       duration,
       onArrive,
     });
   }
 
-  update(dt: number, target: THREE.Vector3): void {
+  update(dt: number, target: Vector3): void {
     for (let i = this.live.length - 1; i >= 0; i--) {
       const m = this.live[i];
       if (!m) continue;
       m.time += dt;
       const t = Math.min(1, m.time / m.duration);
       // A simple curve: source, a point above it, then the player.
-      const a = m.from.clone().lerp(m.rise, t);
-      const b = m.rise.clone().lerp(target, t);
-      m.mesh.position.copy(a.lerp(b, t));
-      const s = 0.7 + Math.sin(t * Math.PI) * 0.8;
-      m.mesh.scale.setScalar(s);
+      Vector3.LerpToRef(m.from, m.rise, t, this.a);
+      Vector3.LerpToRef(m.rise, target, t, this.b);
+      Vector3.LerpToRef(this.a, this.b, t, m.mesh.position);
+      m.mesh.scaling.setAll(0.7 + Math.sin(t * Math.PI) * 0.8);
       if (t >= 1) {
-        m.mesh.visible = false;
+        m.mesh.setEnabled(false);
         m.onArrive?.();
         this.live.splice(i, 1);
       }
@@ -99,59 +202,172 @@ export class MoteFlow {
 
 /** The glow a spring shows. It stays gentle once the spring is empty. */
 export class SpringGlow {
-  readonly mesh: THREE.Mesh;
+  readonly mesh: Mesh;
+  private readonly material: ShaderMaterial;
   private time = 0;
 
   constructor() {
-    this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 16, 12),
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.BackSide,
-        uniforms: { uColor: { value: GOLD.clone() }, uStrength: { value: 0 } },
-        vertexShader: `
-          varying vec3 vN; varying vec3 vV;
-          void main() {
-            vec4 w = modelMatrix * vec4(position, 1.0);
-            vN = normalize(mat3(modelMatrix) * normal);
-            vV = normalize(cameraPosition - w.xyz);
-            gl_Position = projectionMatrix * viewMatrix * w;
-          }
-        `,
-        fragmentShader: `
-          precision highp float;
-          varying vec3 vN; varying vec3 vV;
-          uniform vec3 uColor; uniform float uStrength;
-          void main() {
-            float rim = 1.0 - abs(dot(normalize(vN), normalize(vV)));
-            // A soft halo, never a solid dome: a tight rim and a low alpha.
-            gl_FragColor = vec4(uColor, pow(rim, 3.4) * uStrength * 0.22);
-          }
-        `,
-      }),
-    );
-    this.mesh.visible = false;
+    this.mesh = makeMesh('springGlow', sphereGeo(1, 16, 12));
+    this.material = haloMaterial('springGlow', GOLD, 3.4, 0.22);
+    this.mesh.material = this.material;
+    this.mesh.isPickable = false;
+    this.mesh.setEnabled(false);
   }
 
   setStrength(value: number, radius: number): void {
-    this.mesh.visible = value > 0.01;
-    this.mesh.scale.setScalar(radius);
-    const mat = this.mesh.material as THREE.ShaderMaterial;
-    const u = mat.uniforms.uStrength;
-    if (u) u.value = value;
+    this.mesh.setEnabled(value > 0.01);
+    this.mesh.scaling.setAll(radius);
+    this.material.setFloat('uStrength', value);
   }
 
   update(dt: number): void {
     this.time += dt;
-    const mat = this.mesh.material as THREE.ShaderMaterial;
-    const u = mat.uniforms.uStrength;
-    if (u && this.mesh.visible) {
-      // A slow breath of its own, so it never looks like a hard marker.
-      this.mesh.scale.multiplyScalar(1 + Math.sin(this.time * 0.9) * 0.0016);
-    }
+    if (!this.mesh.isEnabled(false)) return;
+    // A slow breath of its own, so it never looks like a hard marker.
+    this.mesh.scaling.scaleInPlace(1 + Math.sin(this.time * 0.9) * 0.0016);
   }
+}
+
+/** One puff of a drifting cloud, and where it wants to sit. */
+interface Puff {
+  mesh: Mesh;
+  base: Vector3;
+  phase: number;
+}
+
+/** Builds a bank of puffs sharing one material. */
+function buildPuffs(
+  parent: Group,
+  material: Material,
+  count: number,
+  segments: [number, number],
+  make: (rng: () => number, i: number) => { base: Vector3; scale: Vector3; phase: number },
+  seed: number,
+): Puff[] {
+  const rng = makeRng(seed);
+  const geo = sphereGeo(1, segments[0], segments[1]);
+  const puffs: Puff[] = [];
+  const first = makeMesh('puff', geo);
+  first.material = material;
+  first.isPickable = false;
+  for (let i = 0; i < count; i++) {
+    const mesh = i === 0 ? first : first.clone(`puff-${String(i)}`);
+    const spec = make(rng, i);
+    mesh.position.copyFrom(spec.base);
+    mesh.scaling.copyFrom(spec.scale);
+    mesh.parent = parent;
+    mesh.isPickable = false;
+    puffs.push({ mesh, base: spec.base, phase: spec.phase });
+  }
+  return puffs;
+}
+
+/**
+ * Soft drifting cloud: the fog, the waking mist and the feeling weathers all
+ * share it. Softest at the silhouette, so a bank of these reads as cloud
+ * instead of a row of bubbles.
+ */
+const FOG = 'lwFog';
+
+Effect.ShadersStore[`${FOG}VertexShader`] = /* glsl */ `
+  precision highp float;
+  attribute vec3 position;
+  attribute vec3 normal;
+  uniform mat4 world;
+  uniform mat4 viewProjection;
+  uniform vec3 cameraPosition;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vL;
+  void main() {
+    vec4 w = world * vec4(position, 1.0);
+    vN = normalize(mat3(world[0].xyz, world[1].xyz, world[2].xyz) * normal);
+    vV = normalize(cameraPosition - w.xyz);
+    vL = position;
+    gl_Position = viewProjection * w;
+  }
+`;
+Effect.ShadersStore[`${FOG}FragmentShader`] = /* glsl */ `
+  precision highp float;
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vL;
+  uniform vec3 uColor;
+  uniform float uDensity;
+  uniform float uTime;
+  uniform vec3 uLift;
+  uniform float uAlpha;
+  uniform float uCap;
+  uniform vec2 uCurve;
+  uniform vec2 uDrift;
+  uniform float uTint;
+  void main() {
+    // Soft at the rim, denser toward the middle. Nothing hard-edged.
+    // The two clouds fall off differently and both are worth keeping: the
+    // fog thins away from its middle, the mist the player wakes in holds
+    // together further out. uCurve.y picks which, uCurve.x how sharply.
+    float facing = abs(dot(normalize(vN), normalize(vV)));
+    float dense = mix(pow(facing, uCurve.x), 1.0 - pow(1.0 - facing, uCurve.x), uCurve.y);
+    float drift = uDrift.x + uDrift.y * sin(uTime * 0.5 + vL.y * 1.6 + vL.x);
+    float a = dense * uAlpha * uDensity * drift;
+    vec3 col = mix(uColor, uLift * (0.8 + 0.3 * facing), uTint);
+    gl_FragColor = vec4(col, clamp(a, 0.0, uCap));
+  }
+`;
+
+interface HazeOptions {
+  /** How sharply the cloud thins toward its silhouette. */
+  power: number;
+  /** 1 thins away from the middle, 0 holds together further out. */
+  invert: number;
+  /** The slow roll: a base and how far it moves. */
+  drift: [number, number];
+  /** Peak alpha of one puff, and the cap on it. */
+  alpha: number;
+  cap: number;
+  /** A paler colour the cloud is lifted toward, if it has one. */
+  lift?: Color3;
+}
+
+/** A soft cloud material: the fog and the waking mist. */
+function hazeMaterial(name: string, color: Color3, options: HazeOptions): ShaderMaterial {
+  const material = new ShaderMaterial(
+    name,
+    stage(),
+    { vertex: FOG, fragment: FOG },
+    {
+      attributes: ['position', 'normal'],
+      uniforms: [
+        'world',
+        'viewProjection',
+        'cameraPosition',
+        'uColor',
+        'uDensity',
+        'uTime',
+        'uLift',
+        'uAlpha',
+        'uCap',
+        'uCurve',
+        'uDrift',
+        'uTint',
+      ],
+      needAlphaBlending: true,
+    },
+  );
+  material.setColor3('uColor', color);
+  material.setColor3('uLift', options.lift ?? color);
+  material.setFloat('uTint', options.lift ? 1 : 0);
+  material.setFloat('uDensity', 1);
+  material.setFloat('uTime', 0);
+  material.setFloat('uAlpha', options.alpha);
+  material.setFloat('uCap', options.cap);
+  material.setVector2('uCurve', new Vector2(options.power, options.invert));
+  material.setVector2('uDrift', new Vector2(options.drift[0], options.drift[1]));
+  material.alphaMode = Constants.ALPHA_COMBINE;
+  material.disableDepthWrite = true;
+  material.backFaceCulling = false;
+  material.fogEnabled = false;
+  return material;
 }
 
 /**
@@ -159,76 +375,51 @@ export class SpringGlow {
  * cloud in the blockage blue, never sharp and never frightening.
  */
 export class FogVolume {
-  readonly group = new THREE.Group();
-  private readonly material: THREE.ShaderMaterial;
-  private readonly puffs: { mesh: THREE.Mesh; base: THREE.Vector3; phase: number }[] = [];
+  readonly group: Group;
+  private readonly material: ShaderMaterial;
+  private readonly puffs: Puff[];
   private time = 0;
 
   constructor(radius: number) {
-    this.material = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: {
-        uColor: { value: new THREE.Color(PALETTE.blockage) },
-        uDensity: { value: 1 },
-        uTime: { value: 0 },
-      },
-      vertexShader: `
-        varying vec3 vN; varying vec3 vV; varying vec3 vL;
-        void main() {
-          vec4 w = modelMatrix * vec4(position, 1.0);
-          vN = normalize(mat3(modelMatrix) * normal);
-          vV = normalize(cameraPosition - w.xyz);
-          vL = position;
-          gl_Position = projectionMatrix * viewMatrix * w;
-        }
-      `,
-      fragmentShader: `
-        precision highp float;
-        varying vec3 vN; varying vec3 vV; varying vec3 vL;
-        uniform vec3 uColor; uniform float uDensity; uniform float uTime;
-        void main() {
-          // Soft at the rim, denser toward the middle. Nothing hard-edged.
-          float facing = abs(dot(normalize(vN), normalize(vV)));
-          float soft = pow(1.0 - facing, 0.6);
-          float drift = 0.85 + 0.15 * sin(uTime * 0.5 + vL.y * 1.6 + vL.x);
-          float a = (1.0 - soft) * 0.28 * uDensity * drift;
-          // Lift the blockage blue toward a pale, melancholic haze.
-          vec3 col = mix(uColor, vec3(0.52, 0.56, 0.72), 0.32) * (0.8 + 0.3 * facing);
-          gl_FragColor = vec4(col, clamp(a, 0.0, 0.5));
-        }
-      `,
+    this.group = group('fog');
+    this.material = hazeMaterial('fog', linearColor(PALETTE.blockage), {
+      power: 0.6,
+      invert: 1,
+      drift: [0.85, 0.15],
+      alpha: 0.28,
+      cap: 0.5,
+      // Lift the blockage blue toward a pale, melancholic haze.
+      lift: mixColor(linearColor(PALETTE.blockage), new Color3(0.52, 0.56, 0.72), 0.32),
     });
-
-    const geo = new THREE.SphereGeometry(1, 14, 10);
-    const rng = makeRng(9091);
-    for (let i = 0; i < 16; i++) {
-      const mesh = new THREE.Mesh(geo, this.material);
-      const a = rng() * Math.PI * 2;
-      const r = rng() * radius * 0.62;
-      const base = new THREE.Vector3(Math.cos(a) * r, 0.9 + rng() * 1.5, Math.sin(a) * r);
-      mesh.position.copy(base);
-      const s = radius * (0.3 + rng() * 0.3);
-      mesh.scale.set(s, s * 0.72, s);
-      this.puffs.push({ mesh, base, phase: rng() * Math.PI * 2 });
-      this.group.add(mesh);
-    }
-    this.group.name = 'fog';
+    this.puffs = buildPuffs(
+      this.group,
+      this.material,
+      16,
+      [14, 10],
+      (rng) => {
+        const a = rng() * Math.PI * 2;
+        const r = rng() * radius * 0.62;
+        const s = radius * (0.3 + rng() * 0.3);
+        return {
+          base: new Vector3(Math.cos(a) * r, 0.9 + rng() * 1.5, Math.sin(a) * r),
+          scale: new Vector3(s, s * 0.72, s),
+          phase: rng() * Math.PI * 2,
+        };
+      },
+      9091,
+    );
   }
 
   /** 0 gone, 1 the starting fog, above 1 after the player has run away. */
   setDensity(value: number, scale: number): void {
-    const u = this.material.uniforms.uDensity;
-    if (u) u.value = value;
-    this.group.scale.setScalar(scale);
+    this.material.setFloat('uDensity', value);
+    this.group.scaling.setAll(scale);
     this.group.visible = value > 0.01;
   }
 
   update(dt: number): void {
     this.time += dt;
-    const u = this.material.uniforms.uTime;
-    if (u) u.value = this.time;
+    this.material.setFloat('uTime', this.time);
     for (const p of this.puffs) {
       p.mesh.position.set(
         p.base.x + Math.sin(this.time * 0.22 + p.phase) * 0.55,
@@ -239,10 +430,13 @@ export class FogVolume {
   }
 
   /** Where a dissolve mote should start from. */
-  randomPoint(out: THREE.Vector3): THREE.Vector3 {
+  randomPoint(out: Vector3): Vector3 {
     const p = this.puffs[Math.floor(Math.random() * this.puffs.length)];
-    if (!p) return out.copy(this.group.position);
-    return out.copy(p.mesh.position).multiplyScalar(this.group.scale.x).add(this.group.position);
+    if (!p) return out.copyFrom(this.group.position);
+    out.copyFrom(p.mesh.position);
+    out.scaleInPlace(this.group.scaling.x);
+    out.addInPlace(this.group.position);
+    return out;
   }
 }
 
@@ -256,78 +450,54 @@ export class FogVolume {
  * the only kind worth having in a game with no score and no failure.
  */
 export class WakingMist {
-  readonly group = new THREE.Group();
-  private readonly material: THREE.ShaderMaterial;
-  private readonly puffs: { mesh: THREE.Mesh; base: THREE.Vector3; phase: number }[] = [];
+  readonly group: Group;
+  private readonly material: ShaderMaterial;
+  private readonly puffs: Puff[];
   private time = 0;
 
   constructor() {
-    this.material = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: {
-        uColor: { value: new THREE.Color(PALETTE.skyGrey) },
-        uStrength: { value: 1 },
-        uTime: { value: 0 },
-      },
-      vertexShader: `
-        precision highp float;
-        varying vec3 vN; varying vec3 vV; varying vec3 vL;
-        void main() {
-          vec4 w = modelMatrix * vec4(position, 1.0);
-          vN = normalize(mat3(modelMatrix) * normal);
-          vV = normalize(cameraPosition - w.xyz);
-          vL = position;
-          gl_Position = projectionMatrix * viewMatrix * w;
-        }
-      `,
-      fragmentShader: `
-        precision highp float;
-        varying vec3 vN; varying vec3 vV; varying vec3 vL;
-        uniform vec3 uColor; uniform float uStrength; uniform float uTime;
-        void main() {
-          // Soft everywhere and softest at the silhouette, so a bank of these
-          // reads as mist instead of a row of bubbles.
-          float facing = abs(dot(normalize(vN), normalize(vV)));
-          float soft = pow(facing, 0.7);
-          float roll = 0.84 + 0.16 * sin(uTime * 0.5 + vL.y * 1.7 + vL.x);
-          gl_FragColor = vec4(uColor, clamp(soft * roll * uStrength * 0.3, 0.0, 0.5));
-        }
-      `,
+    this.group = group('wakingMist');
+    this.material = hazeMaterial('wakingMist', linearColor(PALETTE.skyGrey), {
+      // Softest at the silhouette, so a bank of these reads as mist instead
+      // of a row of bubbles.
+      power: 0.7,
+      invert: 0,
+      drift: [0.84, 0.16],
+      alpha: 0.3,
+      cap: 0.5,
     });
-
     // A ring of low puffs around the player, thickest at knee height, so the
     // sky stays open and the world ahead just goes soft.
-    const geo = new THREE.SphereGeometry(1, 12, 9);
-    const rng = makeRng(31337);
-    for (let i = 0; i < 12; i++) {
-      const mesh = new THREE.Mesh(geo, this.material);
-      const a = (i / 12) * Math.PI * 2 + rng() * 0.5;
-      const r = 0.45 + rng() * 0.4;
-      const base = new THREE.Vector3(Math.cos(a) * r, 0.1 + rng() * 0.28, Math.sin(a) * r);
-      mesh.position.copy(base);
-      const size = 0.34 + rng() * 0.26;
-      mesh.scale.set(size, size * 0.6, size);
-      this.puffs.push({ mesh, base, phase: rng() * Math.PI * 2 });
-      this.group.add(mesh);
-    }
-    this.group.name = 'wakingMist';
+    this.puffs = buildPuffs(
+      this.group,
+      this.material,
+      12,
+      [12, 9],
+      (rng, i) => {
+        const a = (i / 12) * Math.PI * 2 + rng() * 0.5;
+        const r = 0.45 + rng() * 0.4;
+        const size = 0.34 + rng() * 0.26;
+        return {
+          base: new Vector3(Math.cos(a) * r, 0.1 + rng() * 0.28, Math.sin(a) * r),
+          scale: new Vector3(size, size * 0.6, size),
+          phase: rng() * Math.PI * 2,
+        };
+      },
+      31337,
+    );
   }
 
   /** @param value 0 clear, 1 thickest. */
   setStrength(value: number, radius: number): void {
     const strength = clamp01(value);
     this.group.visible = strength > 0.01;
-    this.group.scale.setScalar(radius);
-    const u = this.material.uniforms.uStrength;
-    if (u) u.value = strength;
+    this.group.scaling.setAll(radius);
+    this.material.setFloat('uDensity', strength);
   }
 
   update(dt: number): void {
     this.time += dt;
-    const u = this.material.uniforms.uTime;
-    if (u) u.value = this.time;
+    this.material.setFloat('uTime', this.time);
     for (const p of this.puffs) {
       p.mesh.position.set(
         p.base.x + Math.sin(this.time * 0.2 + p.phase) * 0.07,
@@ -340,91 +510,95 @@ export class WakingMist {
 
 /** The seed: a small glowing sprout that grows into the bridge. */
 export class Sprout {
-  readonly group = new THREE.Group();
-  private readonly stem: THREE.Mesh;
-  private readonly glow: THREE.Mesh;
+  readonly group: Group;
+  private readonly glow: Mesh;
+  private readonly glowMaterial: StandardMaterial;
   private time = 0;
 
   constructor() {
-    this.stem = new THREE.Mesh(
-      new THREE.ConeGeometry(0.2, 1.05, 6),
-      worldMaterial({ color: PALETTE.growthGreen, rim: 0.3 }),
-    );
-    this.stem.position.y = 0.52;
-    this.glow = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), makeMoteMaterial(GOLD));
+    this.group = group('sprout');
+    const stem = makeMesh('sproutStem', coneGeo(0.2, 1.05, 6));
+    stem.material = worldMaterial({ color: PALETTE.growthGreen, rim: 0.3 });
+    stem.position.y = 0.52;
+    stem.parent = this.group;
+    this.glow = makeMesh('sproutGlow', sphereGeo(0.42, 12, 10));
+    this.glowMaterial = makeMoteMaterial(GOLD);
+    this.glow.material = this.glowMaterial;
     this.glow.position.y = 1.0;
-    this.group.add(this.stem, this.glow);
+    this.glow.parent = this.group;
     this.group.visible = false;
-    this.group.name = 'sprout';
   }
 
   /** A heart seed keeps a quiet warm glow. It dims a little while it pauses. */
   setState(visible: boolean, progress: number, paused: boolean): void {
     this.group.visible = visible;
     if (!visible) return;
-    const s = 0.7 + progress * 0.9;
-    this.group.scale.setScalar(s);
-    const mat = this.glow.material as THREE.MeshBasicMaterial;
-    mat.opacity = paused ? 0.34 : 0.85;
+    this.group.scaling.setAll(0.7 + progress * 0.9);
+    this.glowMaterial.alpha = paused ? 0.34 : 0.85;
   }
 
   update(dt: number): void {
     this.time += dt;
-    this.glow.scale.setScalar(1 + Math.sin(this.time * 1.7) * 0.12);
+    this.glow.scaling.setAll(1 + Math.sin(this.time * 1.7) * 0.12);
   }
 }
 
 /** The bird hint in scene 3. It lands near the hidden spring and sits still. */
-export function buildBird(): THREE.Group {
-  const group = new THREE.Group();
-  const mat = worldMaterial({ color: 0xbfb3a4, rim: 0.3 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), mat);
-  body.scale.set(1, 0.9, 1.35);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 6), mat);
+export function buildBird(): Group {
+  const bird = group('bird');
+  const material = worldMaterial({ color: 0xbfb3a4, rim: 0.3 });
+  const body = makeMesh('birdBody', sphereGeo(0.16, 10, 8));
+  body.material = material;
+  body.scaling.set(1, 0.9, 1.35);
+  const head = makeMesh('birdHead', sphereGeo(0.095, 8, 6));
+  head.material = material;
   head.position.set(0, 0.15, 0.16);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), mat);
+  const tail = makeMesh('birdTail', coneGeo(0.07, 0.24, 5));
+  tail.material = material;
   tail.rotation.x = Math.PI / 2;
   tail.position.set(0, 0.02, -0.24);
-  group.add(body, head, tail);
-  group.position.y = 0.17;
-  group.visible = false;
-  group.name = 'bird';
-  return group;
+  bird.add(body, head, tail);
+  bird.position.y = 0.17;
+  bird.visible = false;
+  return bird;
 }
 
 /** The butterfly hint in scene 5. It flies slowly along the side path. */
 export class Butterfly {
-  readonly group = new THREE.Group();
-  private readonly wings: THREE.Mesh[] = [];
+  readonly group: Group;
+  private readonly wings: Mesh[] = [];
   private time = 0;
-  private path: THREE.Vector3[] = [];
+  private path: Vector3[] = [];
   private travel = 0;
 
   constructor() {
-    const mat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(PALETTE.heartRose),
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
+    this.group = group('butterfly');
+    const material = new StandardMaterial('butterfly', stage());
+    material.emissiveColor = linearColor(PALETTE.heartRose);
+    material.diffuseColor = new Color3(0, 0, 0);
+    material.specularColor = new Color3(0, 0, 0);
+    material.disableLighting = true;
+    material.alpha = 0.85;
+    material.backFaceCulling = false;
+    material.disableDepthWrite = true;
+    material.fogEnabled = false;
     for (const side of [-1, 1]) {
-      const wing = new THREE.Mesh(new THREE.CircleGeometry(0.17, 8), mat);
+      const wing = makeMesh('wing', circleGeo(0.17, 8));
+      wing.material = material;
       wing.position.x = side * 0.11;
-      wing.scale.set(1, 0.72, 1);
+      wing.scaling.set(1, 0.72, 1);
+      wing.parent = this.group;
       this.wings.push(wing);
-      this.group.add(wing);
     }
     this.group.visible = false;
-    this.group.name = 'butterfly';
   }
 
   /** Starts the flight along a path of ground points. */
-  fly(points: THREE.Vector3[]): void {
+  fly(points: Vector3[]): void {
     this.path = points;
     this.travel = 0;
     this.group.visible = points.length > 1;
-    if (points[0]) this.group.position.copy(points[0]);
+    if (points[0]) this.group.position.copyFrom(points[0]);
   }
 
   update(dt: number): void {
@@ -439,9 +613,9 @@ export class Butterfly {
     const a = this.path[i];
     const b = this.path[i + 1];
     if (!a || !b) return;
-    this.group.position.lerpVectors(a, b, this.travel - i);
+    Vector3.LerpToRef(a, b, this.travel - i, this.group.position);
     this.group.position.y += Math.sin(this.time * 1.6) * 0.22;
-    this.group.lookAt(b.x, this.group.position.y, b.z);
+    this.group.lookAt(new Vector3(b.x, this.group.position.y, b.z));
   }
 }
 
@@ -454,11 +628,12 @@ export class Butterfly {
  * seed are told apart — and it is told by what the player sees, not by text.
  */
 export class GrownTree {
-  readonly group = new THREE.Group();
-  private readonly tree: THREE.Group;
-  private readonly glow: THREE.Mesh;
+  readonly group: Group;
+  private readonly tree: Group;
+  private readonly glow: Mesh;
+  private readonly glowMaterial: StandardMaterial;
   /** The tree's own colours, kept so the golden blend stays reversible. */
-  private readonly colors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
+  private readonly colors: { material: PBRMaterial; base: Color3 }[] = [];
   private rise = 0;
   private fade = 1;
   private golden = -1;
@@ -466,21 +641,24 @@ export class GrownTree {
   private kind: 'heart' | 'mind' = 'heart';
 
   constructor(seed: number, blobCount: number) {
+    this.group = group('grownTree');
     this.tree = buildTree(seed, blobCount);
-    this.tree.scale.setScalar(0.001);
-    this.glow = new THREE.Mesh(new THREE.SphereGeometry(1.6, 14, 12), makeMoteMaterial(GOLD));
+    this.tree.parent = this.group;
+    this.tree.scaling.setAll(0.001);
+    this.glow = makeMesh('treeGlow', sphereGeo(1.6, 14, 12));
+    this.glowMaterial = makeMoteMaterial(GOLD);
+    this.glow.material = this.glowMaterial;
     this.glow.position.y = 3.4;
-    this.glow.visible = false;
-    this.group.add(this.tree, this.glow);
+    this.glow.parent = this.group;
+    this.glow.setEnabled(false);
     this.group.visible = false;
-    this.group.name = 'grownTree';
 
-    this.tree.traverse((o) => {
-      const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-      if (material?.color && !this.colors.some((c) => c.material === material)) {
-        this.colors.push({ material, base: material.color.clone() });
+    for (const part of this.tree.getChildMeshes(false)) {
+      const material = part.material as PBRMaterial | null;
+      if (material?.albedoColor && !this.colors.some((c) => c.material === material)) {
+        this.colors.push({ material, base: material.albedoColor.clone() });
       }
-    });
+    }
   }
 
   /**
@@ -494,7 +672,7 @@ export class GrownTree {
     this.fade = Math.max(0, Math.min(1, fade));
     if (!standing) this.rise = 0;
     // A mind tree stands brighter than a heart tree, and only while it lasts.
-    this.glow.visible = standing && kind === 'mind';
+    this.glow.setEnabled(standing && kind === 'mind');
   }
 
   /** Blends the tree toward gold, for the thanks at the end of the chapter. */
@@ -503,7 +681,7 @@ export class GrownTree {
     if (amount === this.golden) return;
     this.golden = amount;
     for (const entry of this.colors) {
-      entry.material.color.copy(entry.base).lerp(GOLD, amount * 0.75);
+      entry.material.albedoColor = mixColor(entry.base, GOLD, amount * 0.75);
     }
   }
 
@@ -514,8 +692,7 @@ export class GrownTree {
     const speed = this.kind === 'mind' ? 1.6 : 0.5;
     this.rise = Math.min(1, this.rise + dt * speed);
     const eased = this.rise * this.rise * (3 - 2 * this.rise);
-    this.tree.scale.setScalar(Math.max(0.001, eased * this.fade));
-    const mat = this.glow.material as THREE.MeshBasicMaterial;
-    mat.opacity = 0.5 * this.fade * (0.8 + Math.sin(this.time * 1.4) * 0.2);
+    this.tree.scaling.setAll(Math.max(0.001, eased * this.fade));
+    this.glowMaterial.alpha = 0.5 * this.fade * (0.8 + Math.sin(this.time * 1.4) * 0.2);
   }
 }

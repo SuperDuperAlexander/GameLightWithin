@@ -1,57 +1,63 @@
-import * as THREE from 'three';
-import { PLAYER, SHADOW, TIERS } from '../content/chapter1';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
+import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe';
+import { RenderTargetTexture } from '@babylonjs/core/Materials/Textures/renderTargetTexture';
+import type { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Scene } from '@babylonjs/core/scene';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
+import { LIGHTING, PLAYER, SHADOW, TIERS } from '../content/chapter1';
 import { PALETTE } from '../content/palette';
 import type { QualitySettings } from '../core/quality';
-import { ColorRestoreState, colorUniforms } from '../render/colorRestore';
-import { buildAtmosphere, updateAtmosphere } from './atmosphere';
+import { ColorRestoreState, colorState, touchColorState } from '../render/colorRestore';
+import { linearColor, mixColor, mixColorTo } from '../render/scene3d';
+import type { Group } from '../render/scene3d';
+import { buildAtmosphere, setAtmosphereCount, updateAtmosphere } from './atmosphere';
 import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
 import { place } from './place';
 import type { Place } from './place';
 import { PlayerFigure } from './player';
-import { buildBridge } from './props';
+import { bridgeSurface, buildBridge } from './props';
+import { updateMountains } from './props2';
 import { buildSky, setSkyDay, setSkyNight, updateSky } from './sky';
 
-const GOLD = new THREE.Color(PALETTE.receiveGold);
-const COLD_RIM = new THREE.Color(PALETTE.skyGrey);
-const WARM_RIM = new THREE.Color(PALETTE.warmSky);
-const HAZE_WARM = new THREE.Color(PALETTE.farHillsViolet).lerp(
-  new THREE.Color(PALETTE.warmSky),
-  0.55,
-);
-const NIGHT_HAZE = new THREE.Color(PALETTE.night);
+const GOLD = linearColor(PALETTE.receiveGold);
+const COLD_RIM = linearColor(PALETTE.skyGrey);
+const WARM_RIM = linearColor(PALETTE.warmSky);
+const HAZE_WARM = mixColor(linearColor(PALETTE.farHillsViolet), linearColor(PALETTE.warmSky), 0.55);
+const NIGHT_HAZE = linearColor(PALETTE.night);
 
 /**
  * Builds and holds the valley: terrain, sky, props, grass, the player figure
  * and the ground checks. It knows nothing about the chapter flow.
  */
 export class World {
-  readonly scene = new THREE.Scene();
   readonly ground: Ground;
   readonly player = new PlayerFigure();
   readonly color = new ColorRestoreState();
   /** Named things that stand in this place, looked up by the chapter. */
-  readonly anchors = new Map<string, THREE.Group>();
-  readonly bridge: THREE.Group | null = null;
+  readonly anchors = new Map<string, Group>();
+  readonly bridge: Group | null = null;
   /** The place this world is built from. */
   readonly place: Place;
-  private readonly sky: THREE.Mesh;
-  private readonly grass: THREE.Mesh;
-  private readonly atmosphere: THREE.Points;
-  private readonly terrainMesh: THREE.Mesh;
-  private readonly bridgeDeck: THREE.Mesh | null = null;
+  private readonly sky: Mesh;
+  private readonly grass: Mesh;
+  private readonly atmosphere: Mesh;
+  private readonly mountains: Mesh | null = null;
+  private readonly bridgeSurfaceAdded = { done: false };
   /** The bridge's own colours, kept so the golden blend stays reversible. */
-  private readonly bridgeColors: { material: THREE.MeshStandardMaterial; base: THREE.Color }[] = [];
+  private readonly bridgeColors: { material: PBRMaterial; base: Color3 }[] = [];
   private bridgeGold = -1;
   private clock = 0;
-  private readonly haze: THREE.Fog;
-  private readonly sun: THREE.DirectionalLight;
+  private readonly sun: DirectionalLight;
+  private shadows: ShadowGenerator | null = null;
+  private readonly casters: Mesh[] = [];
   /** The direction the light comes from, kept so the shadow box can follow. */
-  private readonly sunDir = new THREE.Vector3(38, 44, -62).normalize();
+  private readonly sunDir = new Vector3(38, 44, -62).normalize();
   private shadowTexelSize = 0;
-  private pmrem: THREE.PMREMGenerator | null = null;
-  private envScene: THREE.Scene | null = null;
-  private envTarget: THREE.WebGLRenderTarget | null = null;
+  private probe: ReflectionProbe | null = null;
   private envColorAtBuild = -1;
   private envNightAtBuild = -1;
   /** The chapter writes the player's ground speed here for the walk cycle. */
@@ -60,58 +66,60 @@ export class World {
   private night = 0;
   /** 0 morning, 1 evening. */
   private day = 0;
-  /** The sun's full strength in daylight, kept so night can dim it back. */
-  private readonly sunIntensity: number;
 
-  constructor(quality: QualitySettings, renderer?: THREE.WebGLRenderer) {
+  constructor(
+    readonly scene: Scene,
+    quality: QualitySettings,
+  ) {
     const here = place();
     this.place = here;
-    const terrain = here.buildTerrain();
-    this.terrainMesh = terrain.mesh;
-    this.scene.add(terrain.mesh, ...terrain.extras);
 
-    this.ground = new Ground(terrain.colliders);
+    // Aerial perspective. Distant ground fades into the sky, which is what
+    // gives an open valley its depth. The colour follows the sky as the valley
+    // returns to colour, so the haze never stays a cold grey over warm hills.
+    // The world materials do it themselves, in `colorRestore`, so the engine's
+    // own fog is off.
+    scene.fogMode = Scene.FOGMODE_NONE;
+    colorState.hazeStart = LIGHTING.hazeStart;
+    colorState.hazeEnd = LIGHTING.hazeEnd;
+    colorState.hazeColor.copyFrom(COLD_RIM);
+
+    const terrain = here.buildTerrain();
+    this.ground = new Ground([terrain.surface]);
+    for (const extra of terrain.extras) {
+      const found = extra.getChildMeshes(false).find((m) => m.name === 'mountains');
+      if (found instanceof Mesh) this.mountains = found;
+    }
 
     this.sky = buildSky(quality.skyStrokes);
-    this.scene.add(this.sky);
 
-    // One soft directional light plus an ambient fill.
-    // The light stays near neutral so the valley reads grey at the start; the
-    // warmth comes from the grey-to-colour system, not from the lamp.
-    this.sun = new THREE.DirectionalLight(0xfff6e6, 1.7);
+    // One soft directional light. It stays near neutral so the valley reads
+    // grey at the start; the warmth comes from the grey-to-colour system,
+    // not from the lamp. There is no ambient fill on top of it: the sky
+    // light below is the fill, and a flat one only washes the contrast out.
+    this.sun = new DirectionalLight('sun', this.sunDir.scale(-1), scene);
     this.sun.position.set(38, 44, -62);
-    this.sunIntensity = this.sun.intensity;
-    this.sun.castShadow = false;
-    this.sun.shadow.bias = SHADOW.bias;
-    this.sun.shadow.normalBias = SHADOW.normalBias;
-    const cam = this.sun.shadow.camera;
-    cam.near = SHADOW.near;
-    cam.far = SHADOW.far;
-    cam.left = -SHADOW.boxSize / 2;
-    cam.right = SHADOW.boxSize / 2;
-    cam.top = SHADOW.boxSize / 2;
-    cam.bottom = -SHADOW.boxSize / 2;
-    cam.updateProjectionMatrix();
-    this.scene.add(this.sun, this.sun.target);
-    // No ambient fill light. The environment map is the sky light now, and a
-    // flat fill on top of it only washes the contrast out of everything.
+    this.sun.diffuse = linearColor(LIGHTING.sunColor);
+    this.sun.specular = linearColor(LIGHTING.sunColor);
+    this.sun.intensity = LIGHTING.sunIntensity;
+    this.sun.autoUpdateExtends = false;
+    this.sun.shadowMinZ = SHADOW.near;
+    this.sun.shadowMaxZ = SHADOW.far;
+    this.sun.orthoLeft = -SHADOW.boxSize / 2;
+    this.sun.orthoRight = SHADOW.boxSize / 2;
+    this.sun.orthoTop = SHADOW.boxSize / 2;
+    this.sun.orthoBottom = -SHADOW.boxSize / 2;
 
     const props = here.buildProps(quality.treeBlobs);
-    this.scene.add(props.group);
     for (const b of props.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
 
     // The grass is always built at the highest count. The tier only decides
     // how many of those cards are drawn, so a quality change during play takes
     // effect at once instead of needing the world rebuilt.
     this.grass = buildGrass(TIERS.high.grassCards);
-    this.scene.add(this.grass);
-
     this.atmosphere = buildAtmosphere(TIERS.high.particles);
-    this.scene.add(this.atmosphere);
-    this.applyQuality(quality);
 
     const fixtures = here.buildFixtures();
-    this.scene.add(fixtures.group);
     for (const [id, anchor] of fixtures.anchors) this.anchors.set(id, anchor);
     for (const b of fixtures.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
 
@@ -123,52 +131,38 @@ export class World {
         here.bridge.z,
       );
       bridge.visible = false;
-      this.scene.add(bridge);
       this.bridge = bridge;
-      this.bridgeDeck = bridge.getObjectByName('bridgeDeck') as THREE.Mesh;
-      bridge.traverse((o) => {
-        const material = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-        if (material?.color && !this.bridgeColors.some((b) => b.material === material)) {
-          this.bridgeColors.push({ material, base: material.color.clone() });
+      for (const part of bridge.getChildMeshes(false)) {
+        const material = part.material as PBRMaterial | null;
+        if (material?.albedoColor && !this.bridgeColors.some((b) => b.material === material)) {
+          this.bridgeColors.push({ material, base: material.albedoColor.clone() });
         }
-      });
+      }
     }
-
-    this.scene.add(this.player.group);
 
     // Who casts and who receives. The ground only receives, the props do both,
     // and the grass does neither: 60,000 alpha-tested cards in a shadow pass
     // would cost more than every other thing in the valley put together.
-    terrain.mesh.receiveShadow = true;
-    for (const extra of terrain.extras) {
-      extra.traverse((o: THREE.Object3D) => (o.receiveShadow = true));
+    terrain.mesh.receiveShadows = true;
+    for (const source of [props.group, fixtures.group, this.bridge]) {
+      if (!source) continue;
+      for (const part of source.getChildMeshes(false)) {
+        if (!(part instanceof Mesh)) continue;
+        part.receiveShadows = true;
+        this.casters.push(part);
+      }
     }
-    props.group.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    });
-    fixtures.group.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    });
-    this.bridge?.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-    });
+    for (const part of this.player.castingMeshes()) this.casters.push(part);
 
-    if (renderer) this.initEnvironment(renderer);
+    // Nothing in the scatter, the fixtures or the ground ever moves again.
+    // Saying so once saves working out where they are on every frame.
+    for (const still of [props.group, fixtures.group, ...terrain.extras]) {
+      for (const part of still.getChildMeshes(false)) part.freezeWorldMatrix();
+      still.freezeWorldMatrix();
+    }
 
-    // Aerial perspective. Distant ground fades into the sky, which is what
-    // gives an open valley its depth. The colour follows the sky as the valley
-    // returns to colour, so the haze never stays a cold grey over warm hills.
-    this.haze = new THREE.Fog(new THREE.Color(PALETTE.skyGrey), 38, 185);
-    this.scene.fog = this.haze;
+    this.applyQuality(quality);
+    this.initEnvironment();
   }
 
   /**
@@ -185,16 +179,17 @@ export class World {
     if (Math.abs(n - this.night) < 0.001) return;
     this.night = n;
     setSkyNight(this.sky, n);
-    colorUniforms.uNight.value = n;
-    this.sun.intensity = this.sunIntensity * (1 - n * 0.55);
-    this.sun.color.setHex(n > 0.5 ? 0xc9d6f2 : 0xfff6e6);
+    colorState.night = n;
+    touchColorState();
+    this.sun.intensity = LIGHTING.sunIntensity * (1 - n * 0.55);
+    this.sun.diffuse = linearColor(n > 0.5 ? LIGHTING.moonColor : LIGHTING.sunColor);
     // The sky light is what makes a moonlit meadow read as moonlit rather
     // than as a dark photograph of a day, so it is turned up, not down.
-    this.scene.environmentIntensity = 0.35 + n * 0.75;
+    this.scene.environmentIntensity = LIGHTING.skyLight + n * LIGHTING.skyLightNight;
     // Re-filtering the sky is the single most expensive thing this class can
     // do. Night falls over several seconds, so refreshing on every step meant
-    // one full PMREM pass per frame and the renderer stopped keeping up. It
-    // is done in steps large enough to see, like the colour drift below.
+    // one full pass per frame and the renderer stopped keeping up. It is done
+    // in steps large enough to see, like the colour drift below.
     if (Math.abs(n - this.envNightAtBuild) > 0.12 || n === 0 || n === 1) {
       this.refreshEnvironment();
     }
@@ -218,32 +213,57 @@ export class World {
     if (amount === this.bridgeGold) return;
     this.bridgeGold = amount;
     for (const entry of this.bridgeColors) {
-      entry.material.color.copy(entry.base).lerp(GOLD, amount);
+      entry.material.albedoColor = mixColor(entry.base, GOLD, amount);
     }
   }
 
   /**
    * Builds the image-based light.
    *
-   * A second copy of the sky, sharing the same material, is filtered into an
-   * environment map. That map lights the shadowed side of every surface with
-   * real sky light instead of a flat ambient guess, and because it comes from
-   * the game's own sky it greys and warms with the valley for free.
+   * The sky is filtered into an environment map. That map lights the shadowed
+   * side of every surface with real sky light instead of a flat ambient
+   * guess, and because it comes from the game's own sky it greys and warms
+   * with the valley for free.
    */
-  private initEnvironment(renderer: THREE.WebGLRenderer): void {
-    this.pmrem = new THREE.PMREMGenerator(renderer);
-    this.envScene = new THREE.Scene();
-    this.envScene.add(new THREE.Mesh(this.sky.geometry, this.sky.material));
+  private initEnvironment(): void {
+    // Half float and linear: the sky is drawn in the light the rest of the
+    // world is drawn in, and the sun in it is brighter than white.
+    const probe = new ReflectionProbe(
+      'skyLight',
+      LIGHTING.skyProbeSize,
+      this.scene,
+      true,
+      true,
+      true,
+    );
+    probe.renderList?.push(this.sky);
+    probe.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+    this.probe = probe;
+    this.scene.environmentTexture = probe.cubeTexture;
     this.refreshEnvironment();
   }
 
-  /** Re-filters the sky into the environment map. */
+  /**
+   * Re-filters the sky into the environment map.
+   *
+   * Drawing the sky into the cube again is only half of it. The light a
+   * surface receives from all directions at once is worked out from that
+   * cube and then kept, and it is kept until something says otherwise — so
+   * a sky that has turned to night goes on lighting the meadow like a grey
+   * morning until the working-out is asked for again. It is asked for on
+   * the frame after the cube has been drawn, so it reads the new sky and
+   * not the old one.
+   */
   private refreshEnvironment(): void {
-    if (!this.pmrem || !this.envScene) return;
-    this.envTarget?.dispose();
-    this.envTarget = this.pmrem.fromScene(this.envScene, 0, 1, 400);
-    this.scene.environment = this.envTarget.texture;
-    this.scene.environmentIntensity = 0.35 + this.night * 0.75;
+    if (!this.probe) return;
+    const cube = this.probe.cubeTexture;
+    // The dome is centred on the player, so the probe has to stand inside it.
+    this.probe.position.copyFrom(this.sky.position);
+    cube.resetRefreshCounter();
+    this.scene.onAfterRenderObservable.addOnce(() => {
+      cube.forceSphericalPolynomialsRecompute();
+    });
+    this.scene.environmentIntensity = LIGHTING.skyLight + this.night * LIGHTING.skyLightNight;
     this.envColorAtBuild = this.color.globalColor;
     this.envNightAtBuild = this.night;
   }
@@ -252,9 +272,7 @@ export class World {
   applyQuality(quality: QualitySettings): void {
     setGrassDensity(this.grass, quality.grassCards * this.place.grassDensity, quality.grassFade);
     this.setShadows(quality.shadowMap);
-    // The specks are drawn from the front of the buffer, so a lower tier just
-    // draws fewer of them.
-    this.atmosphere.geometry.setDrawRange(0, quality.particles);
+    setAtmosphereCount(this.atmosphere, quality.particles);
   }
 
   /**
@@ -266,15 +284,33 @@ export class World {
    */
   setShadows(mapSize: number): void {
     const on = mapSize > 0;
-    this.sun.castShadow = on;
     // The blob shadow stands in for the real one on the cheapest tier.
     this.player.setBlobShadow(!on);
-    if (!on) return;
-    if (this.sun.shadow.mapSize.width !== mapSize) {
-      this.sun.shadow.mapSize.set(mapSize, mapSize);
-      this.sun.shadow.map?.dispose();
-      this.sun.shadow.map = null;
+    if (!on) {
+      this.shadows?.dispose();
+      this.shadows = null;
+      return;
     }
+    if (this.shadows && this.shadows.mapSize === mapSize) return;
+    this.shadows?.dispose();
+    const shadows = new ShadowGenerator(mapSize, this.sun);
+    // A shadow outdoors is not a hard edge: it is sharp where a thing touches
+    // the ground and soft where it stands away from it. The top tier draws it
+    // that way; the middle tier keeps the cheaper filtered edge.
+    if (mapSize >= SHADOW.contactHardeningFrom) {
+      shadows.useContactHardeningShadow = true;
+      shadows.contactHardeningLightSizeUVRatio = SHADOW.sunSize;
+      shadows.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+    } else {
+      shadows.usePercentageCloserFiltering = true;
+      shadows.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+    }
+    shadows.bias = SHADOW.bias;
+    shadows.normalBias = SHADOW.normalBias;
+    shadows.transparencyShadow = false;
+    shadows.forceBackFacesOnly = false;
+    for (const caster of this.casters) shadows.addShadowCaster(caster, false);
+    this.shadows = shadows;
     this.shadowTexelSize = SHADOW.boxSize / mapSize;
   }
 
@@ -285,18 +321,16 @@ export class World {
    * crawl and shimmer with every step, which is far more distracting than
    * having no shadows at all.
    */
-  private followShadow(target: THREE.Vector3): void {
-    if (!this.sun.castShadow) return;
+  private followShadow(target: Vector3): void {
+    if (!this.shadows) return;
     const step = this.shadowTexelSize || 1;
     const cx = Math.round(target.x / step) * step;
     const cz = Math.round(target.z / step) * step;
-    this.sun.target.position.set(cx, target.y, cz);
     this.sun.position.set(
       cx + this.sunDir.x * SHADOW.distance,
       target.y + this.sunDir.y * SHADOW.distance,
       cz + this.sunDir.z * SHADOW.distance,
     );
-    this.sun.target.updateMatrixWorld();
   }
 
   /** The height the player's feet rest at, or null where there is no ground. */
@@ -312,7 +346,10 @@ export class World {
     this.bridge.visible = t > 0;
     const eased = t * t * (3 - 2 * t);
     this.bridge.position.y = top - 7 + eased * 7;
-    if (t >= 1 && this.bridgeDeck) this.ground.addCollider(this.bridgeDeck);
+    if (t >= 1 && !this.bridgeSurfaceAdded.done) {
+      this.bridgeSurfaceAdded.done = true;
+      this.ground.addSurface(bridgeSurface(this.bridge));
+    }
   }
 
   update(
@@ -328,11 +365,12 @@ export class World {
     this.color.update(dt);
     // The rim light warms with the valley, so the edges pick up the returning
     // sun instead of staying a cold grey all the way to the end.
-    (colorUniforms.uRimColor.value as THREE.Color)
-      .copy(COLD_RIM)
-      .lerp(WARM_RIM, this.color.globalColor);
-    this.haze.color.copy(COLD_RIM).lerp(HAZE_WARM, this.color.globalColor);
-    if (this.night > 0) this.haze.color.lerp(NIGHT_HAZE, this.night);
+    mixColorTo(colorState.rimColor, COLD_RIM, WARM_RIM, this.color.globalColor);
+    mixColorTo(colorState.hazeColor, COLD_RIM, HAZE_WARM, this.color.globalColor);
+    if (this.night > 0) {
+      mixColorTo(colorState.hazeColor, colorState.hazeColor, NIGHT_HAZE, this.night);
+    }
+    touchColorState();
     // The sky changes slowly, so the environment map is only re-filtered when
     // it has drifted far enough to see. Doing it every frame would cost more
     // than everything else in the valley.
@@ -342,13 +380,14 @@ export class World {
     updateSky(this.sky, this.clock);
     updateGrass(this.grass, this.clock, windStrength, windRadius, fogX, fogZ);
     updateAtmosphere(this.atmosphere, this.clock, this.player.group.position);
+    if (this.mountains) updateMountains(this.mountains);
     this.followShadow(this.player.group.position);
     this.player.setGlow(calm);
     this.player.setLight(light);
     const gy = this.groundAt(this.player.group.position.x, this.player.group.position.z);
     this.player.update(dt, gy ?? this.player.group.position.y, this.playerSpeed);
     // The sky dome follows the camera so it never runs out.
-    this.sky.position.copy(this.player.group.position);
+    this.sky.position.copyFrom(this.player.group.position);
   }
 
   /** Puts the player on the ground at a point and returns the height used. */
@@ -358,12 +397,12 @@ export class World {
     return y;
   }
 
-  get playerPosition(): THREE.Vector3 {
+  get playerPosition(): Vector3 {
     return this.player.group.position;
   }
 
-  get playerEye(): THREE.Vector3 {
-    return new THREE.Vector3(
+  get playerEye(): Vector3 {
+    return new Vector3(
       this.player.group.position.x,
       this.player.group.position.y + PLAYER.height * 0.5,
       this.player.group.position.z,
@@ -371,13 +410,7 @@ export class World {
   }
 
   dispose(): void {
-    this.scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (mesh.geometry) mesh.geometry.dispose();
-      const mat = mesh.material;
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else if (mat) mat.dispose();
-    });
-    this.terrainMesh.geometry.disposeBoundsTree?.();
+    this.shadows?.dispose();
+    this.probe?.dispose();
   }
 }

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { Group } from './render/scene3d';
 import { CALM, RECEIVE } from './content/chapter1';
 import {
   BODY,
@@ -143,9 +144,9 @@ export class Chapter2 implements ChapterRunner {
   private breathsTotal = 0;
   private breathsCalm = 0;
   private hasBreathed = false;
-  private readonly tmp = new THREE.Vector3();
+  private readonly tmp = new Vector3();
   /** The body stones, looked up once instead of searched for every frame. */
-  private readonly stoneAnchors = new Map<BodyPoint, THREE.Group>();
+  private readonly stoneAnchors = new Map<BodyPoint, Group>();
   /** Which stone is lit, so the others are only dimmed when it changes. */
   private litStone: BodyPoint | null = null;
 
@@ -217,22 +218,7 @@ export class Chapter2 implements ChapterRunner {
   // ---------- setup ----------
 
   private buildSceneObjects(): void {
-    const scene = this.game.world.scene;
-    scene.add(
-      this.motes.group,
-      this.springGlow.mesh,
-      this.wellGlow.mesh,
-      this.cloudView.group,
-      this.stormView.group,
-      this.rainbow.group,
-      this.toneRings.group,
-      this.sproutA.group,
-      this.sproutB.group,
-      this.treeA.group,
-      this.treeB.group,
-      this.bird,
-    );
-
+    // Everything built here already stands in the scene.
     const spring = this.game.world.anchors.get('spring');
     if (spring) {
       this.springGlow.mesh.position.set(
@@ -693,7 +679,7 @@ export class Chapter2 implements ChapterRunner {
     // A weather dissolves into motes that flow into the player.
     const source = this.cloud.dissolving ? this.cloudView : this.stormView;
     for (let i = 0; i < amount * 6; i++) {
-      const start = source.randomPoint(new THREE.Vector3());
+      const start = source.randomPoint(new Vector3());
       this.motes.send(
         start,
         WEATHER.dissolveSeconds * (0.5 + Math.random() * 0.5),

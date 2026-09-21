@@ -5,6 +5,9 @@ A calm 3D browser game that teaches Dr. Rulin Xiu's teaching on how to manifest.
 Chapter 1 is "Receive": one small grey valley, a breath rhythm, three springs,
 one soft fog, one seed and a bridge. No enemies, no score, no timers.
 
+Built with TypeScript, Vite and Babylon.js. Every shape, texture and sound is
+generated in code; there are no model, image or audio files.
+
 - `CLAUDE.md` — the content, stack, performance and art rules for every chapter
 - `REPORT.md` — what was built, test results, measured sizes and frame rates
 

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import * as THREE from 'three';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { FollowCamera } from '../../src/core/camera';
 import { CAMERA } from '../../src/content/chapter1';
 
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new Vector3(0, 1, 0);
 
 describe('FollowCamera basis', () => {
   const yaws = [0, Math.PI / 2, Math.PI, -Math.PI / 2, 1.1, -2.4];
@@ -13,13 +13,15 @@ describe('FollowCamera basis', () => {
       const cam = new FollowCamera(16 / 9);
       cam.yaw = yaw;
       cam.pitch = 0;
-      const target = new THREE.Vector3(0, 0, 0);
+      const target = new Vector3(0, 0, 0);
       cam.snapTo(target);
       // The camera sits behind the player, so the way from the camera to the
       // player is the same way the player walks when pressing forward.
-      const toTarget = target.clone().sub(cam.camera.position).setY(0).normalize();
-      const forward = cam.forward(new THREE.Vector3());
-      expect(toTarget.dot(forward)).toBeCloseTo(1, 5);
+      const toTarget = target.subtract(cam.position);
+      toTarget.y = 0;
+      toTarget.normalize();
+      const forward = cam.forward(new Vector3());
+      expect(Vector3.Dot(toTarget, forward)).toBeCloseTo(1, 5);
     }
   });
 
@@ -27,9 +29,9 @@ describe('FollowCamera basis', () => {
     for (const yaw of yaws) {
       const cam = new FollowCamera(16 / 9);
       cam.yaw = yaw;
-      const forward = cam.forward(new THREE.Vector3());
-      const right = cam.right(new THREE.Vector3());
-      expect(forward.dot(right)).toBeCloseTo(0, 6);
+      const forward = cam.forward(new Vector3());
+      const right = cam.right(new Vector3());
+      expect(Vector3.Dot(forward, right)).toBeCloseTo(0, 6);
       expect(right.length()).toBeCloseTo(1, 6);
     }
   });
@@ -42,9 +44,9 @@ describe('FollowCamera basis', () => {
     for (const yaw of yaws) {
       const cam = new FollowCamera(16 / 9);
       cam.yaw = yaw;
-      const forward = cam.forward(new THREE.Vector3());
-      const right = cam.right(new THREE.Vector3());
-      const expected = forward.clone().cross(UP).normalize();
+      const forward = cam.forward(new Vector3());
+      const right = cam.right(new Vector3());
+      const expected = Vector3.Cross(forward, UP).normalize();
       expect(right.x).toBeCloseTo(expected.x, 6);
       expect(right.z).toBeCloseTo(expected.z, 6);
     }
@@ -54,9 +56,9 @@ describe('FollowCamera basis', () => {
     const cam = new FollowCamera(16 / 9);
     // Facing down the valley, which runs toward negative z.
     cam.yaw = Math.PI;
-    const forward = cam.forward(new THREE.Vector3());
+    const forward = cam.forward(new Vector3());
     expect(forward.z).toBeCloseTo(-1, 5);
-    const right = cam.right(new THREE.Vector3());
+    const right = cam.right(new Vector3());
     expect(right.x).toBeCloseTo(1, 5);
   });
 

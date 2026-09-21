@@ -1,15 +1,26 @@
-import type * as THREE from 'three';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import type { Group } from '../render/scene3d';
+
+/**
+ * Where the ground is at a point, or null where there is none at all.
+ *
+ * The ground is a heightfield the game generated itself, so the checks read
+ * that field directly instead of firing a ray at the mesh built from it. It
+ * is the same answer, exactly, for a constant cost and with no acceleration
+ * structure to build or keep in step.
+ */
+export type SurfaceSampler = (x: number, z: number) => number | null;
 
 export interface TerrainResult {
-  mesh: THREE.Mesh;
+  mesh: Mesh;
   /** Anything else the ground is made of: a chasm, a cliff, a lake bed. */
-  extras: THREE.Group[];
-  /** Meshes the ground raycast tests against. */
-  colliders: THREE.Mesh[];
+  extras: Group[];
+  /** Where the player's feet rest, for the ground checks. */
+  surface: SurfaceSampler;
 }
 
 export interface PropsResult {
-  group: THREE.Group;
+  group: Group;
   blockers: { x: number; z: number; radius: number }[];
 }
 
@@ -59,8 +70,8 @@ export interface Place {
 }
 
 export interface FixturesResult {
-  group: THREE.Group;
-  anchors: Map<string, THREE.Group>;
+  group: Group;
+  anchors: Map<string, Group>;
   blockers: { x: number; z: number; radius: number }[];
 }
 
