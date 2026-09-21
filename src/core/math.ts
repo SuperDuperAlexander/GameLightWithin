@@ -72,3 +72,11 @@ export function fbm2d(x: number, y: number, octaves = 4, seed = 1): number {
   }
   return sum / norm;
 }
+
+/** Brings an angle into the range minus pi to pi. */
+export function wrapAngle(a: number): number {
+  let x = a;
+  while (x > Math.PI) x -= Math.PI * 2;
+  while (x < -Math.PI) x += Math.PI * 2;
+  return x;
+}

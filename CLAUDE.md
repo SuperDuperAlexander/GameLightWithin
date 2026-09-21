@@ -7,11 +7,23 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 - No medical or healing claims anywhere. Breathing is never described as healing.
 - Manifestation is always framed as personal reflection, never as a promise.
-- Dr. Rulin Xiu is named in third person only, and only on the "Understand" card.
+- Dr. Rulin Xiu is named in third person only in the game's own writing. The one
+  exception is the guide: she may carry a recorded teaching in which Dr. Rulin
+  speaks for herself. That teaching is her words, presented as hers, and it is
+  never put into the game's voice or the guide's.
 - Blockages look soft and melancholic, never scary or horror-like.
 - No enemies, no points, no score, no "game over", no timers.
-- No companion or helper character.
-- The action teaches the idea. Text comes only after the player has experienced something.
+- Exactly one companion: the guide, a small light that travels with the player.
+  She is the only helper the game has and no chapter adds another.
+- The guide leads. She shows the way through the world, she carries short
+  messages, and at a blockage she opens a teaching. What she never does is
+  take the moment: she speaks before or after an action, never during a
+  breath, and she is always quiet while the player is breathing.
+- The action still teaches the idea first. The guide's words come **after** the
+  player has met the thing they are about, never as a briefing beforehand.
+  Wherever a scene can be understood by doing it, she stays silent.
+- The guide asks once. A message is shown once and is not repeated unless the
+  player has been lost for a long time. She never nags.
 - All player-facing text lives in `src/content/strings.en.ts`. A translation is a
   second file that satisfies `GameStrings` plus one entry in `LOCALES`.
 - Player-facing text: short sentences, sentence case, no all caps, no filler.
@@ -35,9 +47,13 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 ## Hard limits
 
-- **No network requests of any kind.** No analytics. No external fonts or CDNs.
-  The font is self-hosted in `public/fonts`. A Playwright test fails the build
-  if any request leaves the origin.
+- **No request ever leaves the origin.** No analytics, no external fonts, no
+  CDNs, no streaming. A Playwright test fails the build if any request goes
+  anywhere but the game's own origin.
+- Loading from the game's own origin, after the start, is allowed and is how
+  the large things are kept out of the first download: the handwriting font
+  already works this way, and a teaching video works the same way. It is
+  fetched from `public/` when it is first needed, never before.
 - Outside assets are allowed where they raise the quality, but only under a
   licence that permits commercial use without attribution, and only if they can
   be bundled rather than fetched at run time. `@pmndrs/assets` is CC0 and ships
@@ -46,7 +62,13 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 ## Performance budget
 
-- Initial download 6 MB or less. Total 15 MB or less.
+- Initial download 6 MB or less.
+- Total 15 MB or less, not counting teaching videos. Each video is fetched
+  only when its blockage is reached, so it is never part of what a player
+  waits for at the start, and a chapter that ships none costs nothing.
+- A teaching video is 720p or smaller, under 6 MB, and has a text version
+  that says the same thing. The text is what a player on a slow connection,
+  a muted device or a screen reader gets, so it is never a summary.
 - Desktop mid-range laptop: 60 fps. Mid-range Android phone: 30 fps or more.
 - Cap device pixel ratio at 1.5 on mobile.
 - Three quality tiers: low, medium, high. The tier is picked from a short
@@ -85,9 +107,14 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
   alpha-tested cards would cost more than the rest of the valley together.
 - Air is never empty. Pollen drifts in a box that repeats around the camera, so
   the player cannot walk out of the weather and nothing moves on the processor.
-- The player's walk is made from the movement itself: the body rises and falls
-  twice per stride, rolls, and leans into the direction of travel. The phase
-  follows distance, not time, so the step matches the speed.
+- The player has arms and legs and they are animated from the movement itself,
+  in code. There is no skeleton and no animation clip: the body rises and falls
+  twice per stride, rolls, leans into the direction of travel, and the limbs
+  swing against each other. The phase follows distance, not time, so the step
+  matches the speed. The cloak ends at the knee so the legs can be seen.
+- The guide is a small light, never a face and never a body. She grows and
+  warms with the player's own light, so what she looks like is a reading of
+  how far they have come.
 - Painting filter: Kuwahara-style, plus procedural paper grain and a soft vignette.
 - Grey-to-colour: every world material shares one shader chunk. A uniform array
   holds restored zones (centre, radius, strength). Inside a zone the material
@@ -109,6 +136,9 @@ Chapter 1 is "Receive". These rules hold for every later chapter too.
 
 ## Accessibility
 
+- The guide's messages are readable text first. They do not block play, they
+  can be dismissed with a key, they meet the same contrast rule as every other
+  panel, and anything she says is also shown, never only heard.
 - Rhythm presets: normal (in 3, out 4), slow (in 4, out 6), easy (in 2, out 3).
   These are shorter than a breathing practice would use, on purpose. Four in and
   six out is a fine thing to sit with, but in a game it is ten seconds of

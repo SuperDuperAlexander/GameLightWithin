@@ -18,10 +18,12 @@ import { buildGrass, setGrassDensity, updateGrass } from './grass';
 import { Ground } from './ground';
 import { place } from './place';
 import type { Place } from './place';
+import { Guide } from './guide';
 import { PlayerFigure } from './player';
 import { bridgeSurface, buildBridge } from './props';
 import { updateMountains } from './props2';
-import { buildSky, setSkyDay, setSkyNight, updateSky } from './sky';
+import { buildSky, buildSunDisc, setSkyDay, setSkyNight, updateSky } from './sky';
+import { clearWater, updateWater } from './water';
 
 const GOLD = linearColor(PALETTE.receiveGold);
 const COLD_RIM = linearColor(PALETTE.skyGrey);
@@ -36,6 +38,8 @@ const NIGHT_HAZE = linearColor(PALETTE.night);
 export class World {
   readonly ground: Ground;
   readonly player = new PlayerFigure();
+  /** The light that travels with the player. Every chapter has exactly one. */
+  readonly guide = new Guide();
   readonly color = new ColorRestoreState();
   /** Named things that stand in this place, looked up by the chapter. */
   readonly anchors = new Map<string, Group>();
@@ -43,6 +47,8 @@ export class World {
   /** The place this world is built from. */
   readonly place: Place;
   private readonly sky: Mesh;
+  /** The sun as a thing in the world, not only as paint in the sky. */
+  readonly sunDisc: Mesh;
   private readonly grass: Mesh;
   private readonly atmosphere: Mesh;
   private readonly mountains: Mesh | null = null;
@@ -92,6 +98,7 @@ export class World {
     }
 
     this.sky = buildSky(quality.skyStrokes);
+    this.sunDisc = buildSunDisc(this.sky);
 
     // One soft directional light. It stays near neutral so the valley reads
     // grey at the start; the warmth comes from the grey-to-colour system,
@@ -109,6 +116,10 @@ export class World {
     this.sun.orthoRight = SHADOW.boxSize / 2;
     this.sun.orthoTop = SHADOW.boxSize / 2;
     this.sun.orthoBottom = -SHADOW.boxSize / 2;
+
+    // The sky light is set up before anything that stands in the place is
+    // built, because a pool reflects it and has to be able to ask for it.
+    this.initEnvironment();
 
     const props = here.buildProps(quality.treeBlobs);
     for (const b of props.blockers) this.ground.addBlocker(b.x, b.z, b.radius);
@@ -162,7 +173,6 @@ export class World {
     }
 
     this.applyQuality(quality);
-    this.initEnvironment();
   }
 
   /**
@@ -178,7 +188,7 @@ export class World {
     const n = Math.max(0, Math.min(1, night));
     if (Math.abs(n - this.night) < 0.001) return;
     this.night = n;
-    setSkyNight(this.sky, n);
+    setSkyNight(this.sky, n, this.sunDisc);
     colorState.night = n;
     touchColorState();
     this.sun.intensity = LIGHTING.sunIntensity * (1 - n * 0.55);
@@ -200,7 +210,7 @@ export class World {
     const d = Math.max(0, Math.min(1, day));
     if (Math.abs(d - this.day) < 0.004) return;
     this.day = d;
-    setSkyDay(this.sky, d);
+    setSkyDay(this.sky, d, this.sunDisc);
   }
 
   /**
@@ -378,12 +388,15 @@ export class World {
       this.refreshEnvironment();
     }
     updateSky(this.sky, this.clock);
+    updateWater(this.clock, LIGHTING.hazeStart, LIGHTING.hazeEnd);
     updateGrass(this.grass, this.clock, windStrength, windRadius, fogX, fogZ);
     updateAtmosphere(this.atmosphere, this.clock, this.player.group.position);
     if (this.mountains) updateMountains(this.mountains);
     this.followShadow(this.player.group.position);
     this.player.setGlow(calm);
     this.player.setLight(light);
+    this.guide.setLight(light);
+    this.guide.update(dt, this.player.group.position, this.playerSpeed);
     const gy = this.groundAt(this.player.group.position.x, this.player.group.position.z);
     this.player.update(dt, gy ?? this.player.group.position.y, this.playerSpeed);
     // The sky dome follows the camera so it never runs out.
@@ -394,6 +407,8 @@ export class World {
   placePlayer(x: number, z: number): number {
     const y = this.groundAt(x, z) ?? this.place.height(x, z);
     this.player.setPosition(x, y, z);
+    // The guide arrives with them rather than flying across the valley.
+    this.guide.snapTo(this.player.group.position);
     return y;
   }
 
@@ -412,5 +427,6 @@ export class World {
   dispose(): void {
     this.shadows?.dispose();
     this.probe?.dispose();
+    clearWater();
   }
 }

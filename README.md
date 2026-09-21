@@ -51,6 +51,16 @@ on its own, the watchdog decided the device could not keep up at that tier.
 You can walk from the first second. Your stride is short until your first
 finished breath, then it opens up and stays open.
 
+A light travels with you. She names what you have just met and, at a
+blockage, opens a teaching. She never talks over a breath and she never says
+the same thing twice. A teaching that waits for you is closed with its own
+button; everything else goes on its own.
+
+Teaching films, when there are any, live in `public/teachings` and are fetched
+at the blockage they belong to, never at the start. Every one of them has the
+same words written underneath it, so a muted phone or a screen reader loses
+the picture and nothing else.
+
 ## Debug
 
 | Parameter                    | What it does                                                                         |

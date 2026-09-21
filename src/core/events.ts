@@ -34,6 +34,8 @@ export interface GameEvents {
   stormStepChanged: { step: 0 | 1 | 2 | 3 | 4 | 5 };
   lightWellGave: { amount: number };
   nightFell: void;
+  /** The guide has started saying something. */
+  guideSpoke: { id: string };
   /** Sound-only cue requests. */
   cue: { id: CueId };
 }

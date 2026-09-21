@@ -272,6 +272,23 @@ export const LAYOUT = {
   ],
 } as const;
 
+/**
+ * Where each scene is going.
+ *
+ * The guide leads to these, and only when the player has been getting
+ * nowhere for a long time. They are the thing the scene is about, not a
+ * waypoint on a route: she flies to it and waits there. There is no line on
+ * the ground and no arrow.
+ */
+export const SCENE_GOALS: Record<SceneId, { x: number; z: number } | null> = {
+  1: null,
+  2: { x: LAYOUT.spring1.x, z: LAYOUT.spring1.z },
+  3: { x: LAYOUT.spring2.x, z: LAYOUT.spring2.z },
+  4: { x: LAYOUT.fog.x, z: LAYOUT.fog.z },
+  5: { x: LAYOUT.seedSpot.x, z: LAYOUT.seedSpot.z },
+  6: { x: LAYOUT.bridge.x, z: LAYOUT.bridge.z },
+};
+
 /** Where each scene starts the player, and how much light they should already carry. */
 export const SCENE_STARTS: Record<SceneId, { x: number; z: number; light: number }> = {
   1: { x: LAYOUT.playerStart.x, z: LAYOUT.playerStart.z, light: 0 },
@@ -328,6 +345,8 @@ export const TIERS = {
     treeBlobs: 5,
     /** Shadow map size in pixels. 0 turns real shadows off. */
     shadowMap: 0,
+    /** Whether bright things get a glow around them. */
+    bloom: false,
   },
   medium: {
     paintScale: 0.75,
@@ -337,6 +356,7 @@ export const TIERS = {
     skyStrokes: 8,
     treeBlobs: 7,
     shadowMap: 1024,
+    bloom: true,
   },
   high: {
     paintScale: 1.0,
@@ -346,6 +366,7 @@ export const TIERS = {
     skyStrokes: 12,
     treeBlobs: 9,
     shadowMap: 2048,
+    bloom: true,
   },
 } as const;
 
@@ -383,4 +404,134 @@ export const LIGHTING = {
   /** Where the distance haze starts and ends, in metres. */
   hazeStart: 38,
   hazeEnd: 185,
+  /**
+   * Where the sun stands, as a direction. The height runs from morning to
+   * evening.
+   *
+   * It is low on purpose. The camera cannot be tilted far up — it is a
+   * following camera and it is meant to look at the valley, not at the sky
+   * — so a sun any higher than this sits above the top of the frame at all
+   * times, and the light through the trees would be an expensive effect
+   * nobody ever saw.
+   */
+  sunEast: 0.45,
+  sunNorth: -0.79,
+  sunHeightMorning: 0.34,
+  sunHeightEvening: 0.06,
+} as const;
+
+/**
+ * The glow around anything brighter than daylight: the guide, a spring
+ * holding light, the sun, the gold at the end of a chapter.
+ *
+ * It runs at a quarter of the width and height, which is why it can afford
+ * to reach as far as it does. It is off on the cheapest tier.
+ */
+export const BLOOM = {
+  /** Brightness at which a surface starts to glow. 1 is white daylight. */
+  threshold: 1.15,
+  /**
+   * How much of the glow is added back.
+   *
+   * Low on purpose. Bloom should be felt and not seen: turned up, it lays a
+   * veil over the whole picture and the painting filter's brush edges go
+   * soft, which is the opposite of what both are for.
+   */
+  strength: 0.35,
+  /** How far the smear reaches, in quarter-resolution pixels. */
+  radius: 2.2,
+  /** The share of the screen the glow is worked out at. */
+  scale: 0.25,
+} as const;
+
+/**
+ * The figure's proportions, in metres.
+ *
+ * It is 1.7 m tall and built like a person: hips at a third of that, a cloak
+ * that stops above the knee so the legs read, and arms that reach the thigh.
+ * Nothing here is a skeleton — these are the points the walk is worked out
+ * around.
+ */
+export const BODY_SHAPE = {
+  hipHeight: 0.8,
+  hipWidth: 0.125,
+  thigh: 0.41,
+  shin: 0.39,
+  torso: 0.42,
+  shoulderHeight: 1.06,
+  /** Wide enough that the arms hang outside the cloak, not inside it. */
+  shoulderWidth: 0.33,
+  upperArm: 0.3,
+  forearm: 0.28,
+} as const;
+
+/**
+ * The walk, worked out from the distance covered rather than from a clip.
+ *
+ * Every number here is an angle in radians or a distance in metres. Turning
+ * one of them up is the whole of "the walk has more swagger"; there is no
+ * animation file to re-export.
+ */
+export const WALK = {
+  /** Radians of stride phase per metre walked. */
+  phasePerMetre: 2.6,
+  /** Ground speed at which the stride is at full size. */
+  fullStrideSpeed: 3,
+  /** How fast the stride opens up and settles again. */
+  gaitEase: 8,
+  /** How far the body rises and falls, twice per stride. */
+  bob: 0.055,
+  /** How far it rolls from side to side, once per stride. */
+  roll: 0.07,
+  /** How far it leans into the direction of travel. */
+  lean: 0.1,
+  /** Standing still: how far the weight shifts, and how slowly. */
+  sway: 0.022,
+  swaySpeed: 0.45,
+  /** Standing still: how far the chest rises on a full breath. */
+  breathRise: 0.035,
+  /** How far the legs swing from the hip. */
+  legSwing: 0.62,
+  /** How far the knee folds. It only ever folds backwards. */
+  kneeBend: 0.85,
+  /** How far the arms swing, and how the elbow sits. */
+  armSwing: 0.45,
+  elbowRest: 0.18,
+  elbowBend: 0.35,
+  /** How far the head will turn to look at something, and how fast. */
+  headTurnMax: 0.7,
+  headEase: 4,
+} as const;
+
+/**
+ * The guide: the light that travels with the player.
+ *
+ * She leads and she carries the teachings. What keeps her from becoming the
+ * thing everyone remembers her predecessors for is here: a gap between
+ * anything she says, silence while the player is breathing, and a long wait
+ * before she offers help to somebody who has not asked for it.
+ */
+export const GUIDE = {
+  /** Seconds an ordinary message stays on screen. */
+  messageSeconds: 6,
+  /** Seconds she stays quiet after finishing one. */
+  quietAfterSeconds: 4,
+  /** Seconds of getting nowhere before she offers the way on. */
+  lostSeconds: 75,
+  /** How far she floats from the player, and how high. */
+  orbitRadius: 1.5,
+  orbitHeight: 1.45,
+  /** How fast she circles, in radians per second. */
+  orbitSpeed: 0.5,
+  /** How close she comes when the player stands still. */
+  restRadius: 0.95,
+  /** How quickly she catches up. Low is lazier and more alive. */
+  followLambda: 2.6,
+  /** Her size when the player carries no light, and at full light. */
+  sizeMin: 0.1,
+  sizeMax: 0.17,
+  /** How many specks trail behind her. */
+  trail: 14,
+  /** Seconds a speck in the trail lasts. */
+  trailSeconds: 0.9,
 } as const;

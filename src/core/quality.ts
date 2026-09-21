@@ -13,6 +13,7 @@ export interface QualitySettings {
   readonly particles: number;
   readonly skyStrokes: number;
   readonly treeBlobs: number;
+  readonly bloom: boolean;
 }
 
 export function isTouchDevice(): boolean {

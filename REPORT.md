@@ -1102,6 +1102,139 @@ still the way to find out.
 
 ---
 
+# C4 The guide, the walk, and a better-looking valley
+
+A second pass over the picture, and the one companion the game now has. The
+rules in `CLAUDE.md` were rewritten first, because four of them said this
+work was not allowed, and a rule that is quietly broken is worse than no rule.
+
+## C4.1 What the rules now say
+
+| Was                                                  | Is now                                                                                          |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| No companion or helper character                     | Exactly one: the guide. No chapter adds another                                                 |
+| Text only after the player has experienced something | Still true of the game's writing, and now the rule the guide is held to as well                 |
+| Dr. Rulin named in third person, on one card only    | Plus one exception: she may speak for herself in a recorded teaching the guide carries          |
+| No network requests of any kind                      | No request ever leaves the origin. Fetching from the game's own files, after the start, is fine |
+| Total download 15 MB                                 | 15 MB not counting teaching videos, which are fetched at the blockage they belong to            |
+
+The last two matter more than they look. The rule as written forbade the very
+thing the handwriting font already does, so it was not a rule anybody was
+keeping. What is actually wanted is that nothing reaches outside, and that the
+first download stays small. That is now what it says.
+
+## C4.2 The guide
+
+She is a light. She grows and warms with the light the player carries and with
+the colour returning to the valley, so what she looks like is a reading of how
+far they have come, and there is nothing to explain.
+
+The part worth writing down is what stops her becoming the thing everyone
+remembers her ancestors for. `GuideSystem` has no engine in it and it is
+eleven unit tests long, and every one of those tests is about when she is
+quiet:
+
+- She never speaks over a breath. The breath is the whole game.
+- She leaves a gap between anything she says, so two things never run together.
+- She says a thing once.
+- She offers the way on only after a long time getting nowhere, and only to
+  somebody who is actually walking about. Somebody sitting still is not lost.
+
+The light motes moved house. Light used to fly from a spring into the player's
+chest and orbit them; it now flows to the guide. That way she is not one more
+thing on screen — she gathers up something that was already there.
+
+## C4.3 The teaching slot
+
+A teaching is `{ text, video? }`. Today every one of them is text. When a film
+of Dr. Rulin is dropped into `public/teachings`, the guide opens it at its
+blockage and the words stay underneath it: a muted phone, a slow connection or
+a screen reader loses the picture and nothing else. The film is
+`preload="none"` and nothing ever plays on its own.
+
+Two numbers are still open and will need deciding when the first film exists:
+how long, and how many. At 720p, six megabytes buys roughly half a minute.
+
+## C4.4 The walk
+
+The figure had no arms and no legs. It has both now, and still no skeleton:
+the cloak was shortened to above the knee, and the limbs hang off the same
+number the body always used, which is the distance walked.
+
+- The legs swing from the hip, half a stride apart, and the knees fold only
+  backwards.
+- The arms swing against the leg on the same side.
+- Standing still, the weight shifts slowly from one foot to the other and the
+  chest rises and falls with the player's own breath, taken straight from
+  `breath.playerRing`.
+- The head turns toward the guide while she is speaking, and no further than a
+  person can turn without their shoulders.
+
+Everything is in `WALK` and `BODY_SHAPE` in `src/content/chapter1.ts`. There is
+no animation file to re-export; "the walk has more swagger" is one number.
+
+## C4.5 The picture
+
+**The sky meets the ground.** The horizon now takes the colour of the distance
+haze, so the two stop being near misses of each other. Above the two cloud
+layers there is a third, high and slow, on the tiers that can afford it, and
+cloud near the sun is lit from behind.
+
+**Water.** A pool ripples from two crossing noise fields and reflects the sky —
+the same sky cube the world is already lit by, because rendering the scene
+again for a basin a metre across would cost more than the basin. It follows the
+grey-to-colour rule and the haze like every other surface.
+
+**Bloom.** Two passes at a quarter of the width and height, after the painting
+filter and not before it: before it, the filter breaks a halo into brush
+patches, which is the one thing a halo must not do. It is deliberately weak.
+Turned up it lays a veil over the whole picture and softens the brush edges,
+which is the opposite of what both effects are for.
+
+**The sun is a thing now.** It was a few lines in the sky shader. It is also a
+soft disc turned toward the camera, standing at the same angle, adding to the
+painted one rather than covering it. One direction feeds both, so the paint and
+the object cannot drift apart.
+
+## C4.6 What was cut, and why
+
+**Light through the trees.** It was on the plan, it was built, and it works. It
+is also gone.
+
+The camera in this game cannot be tilted far up — it follows the player and it
+is meant to look at the valley. With the sun where the sky shader painted it,
+the sun sat above the top of the frame at all times. Lowering it by two degrees
+brought it into shot, and then the second problem showed: rays need something
+dark standing in front of a bright source, and from this camera the sun is in
+open sky above the treeline. The effect ran correctly, cost a render pass of
+its own, and put almost nothing on the screen.
+
+It was named in the plan as the first thing to cut if the numbers did not
+justify it, and they did not. What it needed — the sun as an object — was worth
+having on its own and stayed.
+
+## C4.7 Performance
+
+Everything new is tied to a tier that can afford it.
+
+| Effect                       | low | medium | high |
+| ---------------------------- | --- | ------ | ---- |
+| Softer sky, horizon join     | yes | yes    | yes  |
+| Third cloud layer            | no  | yes    | yes  |
+| Water ripple, sky reflection | yes | yes    | yes  |
+| The guide and her trail      | yes | yes    | yes  |
+| Arms, legs, breathing        | yes | yes    | yes  |
+| Bloom                        | no  | yes    | yes  |
+| Contact-hardening shadows    | no  | no     | yes  |
+
+The picture measures the same as before this pass: 0.370 average brightness
+against 0.372 for the build all of this started from. That is the point. The
+additions are light and movement, not a change of key.
+
+---
+
+---
+
 # Mobile
 
 A note on what a real phone found, and what I could not find from here.

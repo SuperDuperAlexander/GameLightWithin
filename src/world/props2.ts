@@ -32,9 +32,23 @@ import {
   setVertexColors,
   stage,
 } from '../render/scene3d';
+import { addWater, waterMaterial } from './water';
 
 function stoneMaterial(tone: string | number | Color3 = 0xada79d, rim = 0.3): Material {
   return worldMaterial({ color: tone, rim });
+}
+
+/**
+ * A pool that reflects the sky the world is lit by.
+ *
+ * The sky cube is set up before anything that stands in the place is built,
+ * so it is here to be reflected. If it somehow is not, the pool falls back
+ * to being a dull wet stone rather than to nothing at all.
+ */
+function poolMaterial(shallow: number, deep: number): Material {
+  const sky = stage().environmentTexture;
+  if (!sky) return worldMaterial({ color: shallow, rim: 0.3, roughness: 0.4, doubleSided: true });
+  return waterMaterial(sky, shallow, deep);
 }
 
 /**
@@ -201,7 +215,7 @@ export function buildLightWell(): Group {
   }
 
   const water = makeMesh('wellWater', rotateXGeo(circleGeo(1.15, 26), -Math.PI / 2));
-  water.material = worldMaterial({ color: 0x9fb6c2, rim: 0.3, roughness: 0.42, doubleSided: true });
+  addWater(water, poolMaterial(0x9fb6c2, 0x5f7d8e));
   water.position.y = 0.06;
   water.parent = well;
   return well;
@@ -331,7 +345,7 @@ export function buildMeadowSpring(): Group {
     stone.parent = spring;
   }
   const water = makeMesh('springWater', rotateXGeo(circleGeo(0.95, 24), -Math.PI / 2));
-  water.material = worldMaterial({ color: 0xa8c0cc, rim: 0.32, roughness: 0.4, doubleSided: true });
+  addWater(water, poolMaterial(0xa8c0cc, 0x69889b));
   water.position.y = 0.08;
   water.parent = spring;
   return spring;
