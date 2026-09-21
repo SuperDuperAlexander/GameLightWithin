@@ -1231,6 +1231,13 @@ The picture measures the same as before this pass: 0.370 average brightness
 against 0.372 for the build all of this started from. That is the point. The
 additions are light and movement, not a change of key.
 
+The download grew by 52 KB, to 2,136,260 bytes. That is the guide, the water,
+the bloom passes and the limbs together, and it is all code — there is still
+no model, image or audio file in the game. The budget is 6 MB for the first
+download and it is still met with room.
+
+177 unit tests and 82 browser tests pass, desktop and mobile.
+
 ---
 
 ---
