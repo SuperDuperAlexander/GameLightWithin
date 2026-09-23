@@ -37,10 +37,9 @@ export class GuidePanel {
     this.close.textContent = closeLabel;
     this.close.addEventListener('click', () => this.onDismiss?.());
 
-    const name = el('span', { class: 'lw-guide-name', 'aria-hidden': 'true' }, 'Little One');
     const mark = el('span', { class: 'lw-guide-mark', 'aria-hidden': 'true' });
     const labelStar = el('span', { class: 'lw-guide-label-star', 'aria-hidden': 'true' }, '\u2726');
-    const label = el('div', { class: 'lw-guide-label' }, mark, name, labelStar);
+    const label = el('div', { class: 'lw-guide-label' }, mark, labelStar);
     const sparks = el(
       'span',
       { class: 'lw-guide-sparks', 'aria-hidden': 'true' },
