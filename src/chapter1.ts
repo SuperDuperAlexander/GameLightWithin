@@ -763,6 +763,7 @@ export class Chapter1 {
         this.guidePanel.show(line, message.teaching.video, message.holds);
       }
       world.guide.setSpeaking(true);
+      this.guidePanel.follow(world.guide.position, this.game.scene);
       // The figure glances at her while she talks, and only then.
       world.player.lookTowards(world.guide.position);
     } else {

@@ -40,6 +40,7 @@ export class Guide {
   private readonly coreMaterial: StandardMaterial;
   private readonly halo: Mesh;
   private readonly haloMaterial: StandardMaterial;
+  private readonly aura: Mesh[] = [];
   private readonly trail: Speck[] = [];
   private readonly free: Mesh[] = [];
   private readonly want = new Vector3();
@@ -72,6 +73,19 @@ export class Guide {
     this.halo.scaling.setAll(2.6);
     this.halo.isPickable = false;
     this.halo.parent = this.group;
+
+    // A few light motes orbit the core. They make her read as a small living
+    // presence, while she remains only light: never a face or a body.
+    const auraMaterial = makeMoteMaterial(WARM.clone());
+    auraMaterial.alpha = 0.72;
+    for (let i = 0; i < 5; i++) {
+      const mote = makeMesh(`guideAura-${String(i)}`, sphereGeo(1, 6, 5));
+      mote.material = auraMaterial;
+      mote.isPickable = false;
+      mote.parent = this.group;
+      mote.setEnabled(false);
+      this.aura.push(mote);
+    }
 
     // The trail is a small pool of specks, laid down behind her and fading.
     // They are not parented to her: once dropped, a speck stays where it was.
@@ -149,13 +163,26 @@ export class Guide {
     const size =
       (GUIDE.sizeMin + (GUIDE.sizeMax - GUIDE.sizeMin) * this.brightness) *
       pulse *
-      (1 + this.speaking * 0.25);
+      (1 + this.speaking * 0.38);
     this.core.scaling.setAll(size);
-    this.halo.scaling.setAll(size * 2.6);
+    this.halo.scaling.setAll(size * (2.6 + this.speaking * 0.45));
     mixColorTo(this.colour, COOL, WARM, warmth);
     this.coreMaterial.emissiveColor = this.colour;
     this.haloMaterial.emissiveColor = this.colour;
-    this.haloMaterial.alpha = 0.28 + this.speaking * 0.16;
+    this.haloMaterial.alpha = 0.28 + this.speaking * 0.24;
+    for (let i = 0; i < this.aura.length; i++) {
+      const mote = this.aura[i];
+      if (!mote) continue;
+      mote.setEnabled(this.speaking > 0);
+      const phase = this.clock * (0.7 + i * 0.08) + i * 1.27;
+      const radius = size * (1.9 + (i % 2) * 0.55 + this.speaking * 0.45);
+      mote.position.set(
+        Math.cos(phase) * radius,
+        Math.sin(phase * 1.6) * size * 1.15,
+        Math.sin(phase) * radius,
+      );
+      mote.scaling.setAll(size * (0.18 + this.speaking * 0.08));
+    }
 
     this.dropSpecks(dt, size);
   }
